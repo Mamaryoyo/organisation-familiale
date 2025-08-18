@@ -819,21 +819,65 @@ function distributeWeek(){
   const target = Number(document.getElementById('targetInput').value)||75;
   const maxCap = Number(document.getElementById('maxInput').value)||90;
   const mondayISO_ = mondayOf(weekOffset);
+  const hideWeekendsPref = (document.getElementById('hideWeekends').value||'no')==='yes';
+
+  // All 7 days of the displayed week
   const days = Array.from({length:7}, (_,i)=> addDaysISO(mondayISO_, i));
+  // Days we are allowed to schedule tasks on
+  const availableDays = days.filter(d => !absences.includes(d) && (!hideWeekendsPref || !isWeekend(d)));
 
-  const dayLoad = new Map(days.map(d=>[d,0]));
-  tasks.forEach(t=>{ if(days.includes(t.nextDue)) dayLoad.set(t.nextDue, (dayLoad.get(t.nextDue)||0) + (Number(t.duration)||0)); });
+  // Build current loads for available days only
+  const dayLoad = new Map(availableDays.map(d=>[d,0]));
+  const inWeekTasks = tasks.filter(t=> days.includes(t.nextDue));
 
-  const byDate = tasks.filter(t=>days.includes(t.nextDue)).sort((a,b)=> (Number(b.duration)||0) - (Number(a.duration)||0));
+  // Pre-fill loads and mark tasks on unavailable days for move
+  const needsMove = [];
+  for(const t of inWeekTasks){
+    if(!availableDays.includes(t.nextDue)){
+      needsMove.push(t);
+    } else {
+      dayLoad.set(t.nextDue, (dayLoad.get(t.nextDue)||0) + (Number(t.duration)||0));
+    }
+  }
+
+  // Sort tasks by duration desc to move heavy ones first (including overloaded days)
+  const byDate = [...inWeekTasks].sort((a,b)=> (Number(b.duration)||0) - (Number(a.duration)||0));
+
   for(const t of byDate){
-    let cur = t.nextDue; let loadCur = dayLoad.get(cur)||0;
-    if(loadCur <= maxCap) continue;
-    let bestDay = cur; let bestDelta = Infinity;
-    for(const d of days){
+    const dur = Number(t.duration)||0;
+    let cur = t.nextDue;
+    let curLoad = availableDays.includes(cur) ? (dayLoad.get(cur)||0) : Infinity; // force move if unavailable
+
+    const overloaded = curLoad > maxCap;
+    const mustMove = !availableDays.includes(cur) || overloaded;
+
+    if(!mustMove) continue;
+
+    // Find best candidate day: prefer under target, closest in distance, respecting cap
+    let bestDay = null; let bestScore = Infinity;
+    for(const d of availableDays){
       const l = dayLoad.get(d)||0;
-      if(l + (Number(t.duration)||0) <= maxCap){
-        const delta = Math.abs(days.indexOf(d) - days.indexOf(cur));
-        if(l < target && delta < bestDelta){ bestDelta = delta; bestDay = d; }
+      if(l + dur > maxCap) continue; // respect cap
+      const distance = Math.abs(days.indexOf(d) - days.indexOf(cur));
+      const penalty = (l < target ? 0 : (l - target + 1));
+      const score = distance * 100 + penalty; // distance dominates, then how far above target
+      if(score < bestScore){ bestScore = score; bestDay = d; }
+    }
+
+    // Fallback: if nothing fits under cap, put on day with minimal load (still among availableDays)
+    if(!bestDay){
+      bestDay = availableDays.reduce((minD, d)=> (dayLoad.get(d)||0) < (dayLoad.get(minD)||0) ? d : minD, availableDays[0]);
+    }
+
+    // Apply move bookkeeping
+    if(availableDays.includes(cur)){
+      dayLoad.set(cur, Math.max(0, (dayLoad.get(cur)||0) - dur));
+    }
+    dayLoad.set(bestDay, (dayLoad.get(bestDay)||0) + dur);
+    t.nextDue = bestDay;
+  }
+  saveAll();
+}
       }
     }
     if(bestDay !== cur){
