@@ -1,202 +1,627 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Agenda hebdomadaire</title>
-  <!-- Styles existants conservés, ajout des styles pour les événements Google Calendar -->
-  <style>
-    body { font-family: sans-serif; margin: 0; padding: 0; }
-    .week { display: flex; justify-content: space-between; }
-    .day { flex: 1; padding: 0.5rem; border: 1px solid #ddd; }
-    .day + .day { border-left: none; } /* évite double bordure entre colonnes */
-    .day h3 { text-align: center; font-size: 1.1em; margin: 0 0 0.5rem; }
-    .task { background: #f9f9f9; padding: 0.25rem 0.5rem; margin: 0.25rem 0; border-left: 4px solid #ccc; }
-    /* Couleurs pour les événements de calendrier (Yonice, Marine, Commun) */
-    .event.yonice { border-left: 4px solid #2563eb; }
-    .event.marine { border-left: 4px solid #facc15; }
-    .event.commun { border-left: 4px solid #9b59b6; }
-  </style>
-  <!-- Script de l'API Google -->
-  <script src="https://apis.google.com/js/api.js"></script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Organisation familiale — corrigée</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<!-- Google Identity Services (auth) + gapi client (API) -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js" async defer></script>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --text:#2e2e2e; --muted:#6b7280; --line:#e5e7eb;
+    --blue:#2563eb; --yellow:#facc15; --green:#22c55e; --orange:#f59e0b; --red:#ef4444;
+    --red-soft:#fee2e2; --red-soft-dark:rgba(239,68,68,.18);
+    --card:#ffffff; --card-soft:#f3f4f6; --shadow:0 1px 3px rgba(0,0,0,.08);
+  }
+  body.dark{
+    --bg:#1f1f23; --panel:#2b2b31; --text:#e5e5e5; --muted:#9ca3af; --line:#3b3b45;
+    --card:#2b2b31; --card-soft:#3a3a42; --shadow:0 1px 3px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family:Inter,system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+    background:var(--bg); color:var(--text); display:flex; height:100vh; overflow:hidden;
+    transition:background .3s,color .3s;
+  }
+
+  .app{display:flex; flex:1; width:100%; height:100%;}
+  .left{flex:2; display:flex; flex-direction:column; border-right:1px solid var(--line); min-width:560px;}
+  .right{flex:1; display:flex; flex-direction:column; min-width:360px;}
+
+  .bar{display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5}
+  .title{font-weight:600; font-size:18px}
+  .sub{font-size:13px; color:var(--muted)}
+  .bar-left{display:flex; flex-direction:column; gap:2px}
+  .bar-right{display:flex; align-items:center; gap:8px}
+  .btn{background:var(--panel); border:1px solid var(--line); padding:6px 10px; border-radius:8px; cursor:pointer; box-shadow:var(--shadow); color:var(--text)}
+  .btn:hover{filter:brightness(0.98)}
+  .icon{background:var(--panel); border:1px solid var(--line); padding:6px 10px; border-radius:8px; cursor:pointer; font-size:18px; line-height:1; box-shadow:var(--shadow); color:var(--text)}
+
+  .week-wrap{flex:1; overflow:auto; background:var(--panel)}
+  .week-view{display:flex; gap:8px; padding:12px; transform:translateX(0); transition:transform .35s ease}
+  .day{flex:1; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px; display:flex; flex-direction:column; align-items:stretch; box-shadow:var(--shadow); min-width:0}
+  .day-head{display:flex; flex-direction:column; align-items:center; margin-bottom:8px}
+  .weekday{font-size:16px; font-weight:400; text-transform:capitalize}
+  .date{font-size:13px; color:var(--muted)}
+  .today-ring{border:2px solid var(--blue); border-radius:10px; padding:2px 6px}
+  .pill{margin-top:6px; background:var(--panel); border-radius:10px; padding:8px; font-size:12px; border-left:6px solid #ccc; box-shadow:var(--shadow); display:flex; align-items:center; justify-content:space-between; gap:8px}
+  .pill .badge{font-size:11px; padding:2px 6px; border-radius:999px; background:#e5e7eb; color:#111}
+  body.dark .pill .badge{background:#444; color:#eee}
+  .pill.yonice{border-left-color:var(--blue)}
+  .pill.marine{border-left-color:var(--yellow)}
+  .pill.event{border-left-color:var(--green)}
+  .absent{background:linear-gradient(180deg, rgba(239,68,68,.12), rgba(239,68,68,.08)); outline:1px dashed rgba(239,68,68,.6);}
+  .day-foot{margin-top:auto; display:flex; flex-direction:column; align-items:center; gap:6px}
+  .load-chip{font-size:11px; color:var(--muted); background:var(--card-soft); border:1px solid var(--line); border-radius:999px; padding:2px 8px}
+  .load-bar{height:6px; width:80%; border-radius:4px; background:var(--line); overflow:hidden}
+  .load-fill{height:100%; border-radius:4px}
+
+  .month{background:var(--panel); border-top:1px solid var(--line); padding:10px 12px}
+  .month-top{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:6px}
+  .month-title{font-weight:600; flex:1; text-align:center}
+  .days-head{display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:6px; color:var(--muted); font-size:11px; text-align:center}
+  .grid{display:grid; grid-template-columns:repeat(7,1fr); gap:6px}
+  .cell{
+    width:34px; height:34px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px; cursor:pointer; user-select:none;
+    background:transparent; border:1px solid var(--line); color:var(--text);
+    transition:transform .08s ease, background .2s ease, border-color .2s ease;
+  }
+  .cell:hover{transform:scale(1.04)}
+  .cell.today{box-shadow:0 0 0 2px var(--blue) inset; border-color:var(--blue); font-weight:700}
+  .cell.wknd{background:var(--card-soft); color:var(--muted)}
+  .cell.abs{background:var(--red); color:#fff; border-color:var(--red)}
+
+  .right-head{padding:12px 14px; background:var(--panel); border-bottom:1px solid var(--line)}
+  .tasks{flex:1; padding:12px; display:grid; grid-template-columns:repeat(3,1fr); gap:10px; overflow:auto}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; text-align:center; box-shadow:var(--shadow); cursor:pointer; transition:transform .12s ease, opacity .25s ease}
+  .card:hover{transform:translateY(-1px)}
+  .card.fade{opacity:0; transform:scale(.9)}
+  .name{font-weight:600; font-size:14px; margin:0}
+  .meta{font-size:12px; color:var(--muted); margin-top:4px}
+  .days{font-weight:800; font-size:26px; margin-top:6px}
+  .upcoming{background:var(--card-soft)}
+  body.dark .upcoming{background:var(--card)}
+  .late{background:var(--red-soft); border-color:var(--red)}
+  body.dark .late{background:var(--red-soft-dark); border-color:var(--red); color:#fca5a5}
+
+  .modal{position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.45); backdrop-filter:blur(6px); z-index:20}
+  .dialog{background:var(--panel); color:var(--text); padding:18px; border-radius:12px; width:min(360px,90vw); box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .dialog h3{margin:0 0 12px 0; font-size:16px; font-weight:600; text-align:center}
+  .who{display:flex; gap:10px}
+  .wbtn{flex:1; padding:10px; border-radius:10px; border:none; cursor:pointer; font-weight:700}
+  .wbtn.yonice{background:var(--blue); color:#fff}
+  .wbtn.marine{background:var(--yellow); color:#333}
+
+  .panel{position:fixed; top:0; right:-380px; width:380px; height:100%; background:var(--panel); border-left:1px solid var(--line); box-shadow:-4px 0 12px rgba(0,0,0,.12); transition:right .28s ease; z-index:25; display:flex; flex-direction:column}
+  .panel.open{right:0}
+  .p-head{padding:14px; border-bottom:1px solid var(--line); font-weight:700}
+  .p-body{padding:14px; overflow:auto; display:flex; flex-direction:column; gap:12px}
+  label{font-size:12px; color:var(--muted)}
+  input,select{width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--text)}
+  hr{border:none; border-top:1px solid var(--line); margin:6px 0}
+  .row{display:flex; gap:8px}
+  .row > *{flex:1}
+
+  .chart{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; box-shadow:var(--shadow)}
+
+  @media (max-width:980px){ .left{min-width:0} .right{min-width:0} .tasks{grid-template-columns:repeat(2,1fr)} }
+  @media (max-width:720px){ .app{flex-direction:column} .tasks{grid-template-columns:1fr} }
+</style>
 </head>
 <body>
-  <h1>Agenda hebdomadaire</h1>
+  <div class="app">
+    <!-- LEFT -->
+    <div class="left">
+      <div class="bar">
+        <div class="bar-left">
+          <div class="title" id="weekTitle">Semaine</div>
+          <div class="sub" id="weekSub"></div>
+        </div>
+        <div class="bar-right">
+          <button class="btn" id="prevW" title="Semaine précédente" aria-label="Semaine précédente">‹</button>
+          <button class="btn" id="todayBtn" title="Revenir à aujourd’hui" aria-label="Aujourd’hui">Aujourd’hui</button>
+          <button class="btn" id="nextW" title="Semaine suivante" aria-label="Semaine suivante">›</button>
+          <button class="btn" id="autoBtn" title="Répartir la semaine" aria-label="Répartition auto">↔️</button>
+          <button class="icon" id="absenceBtn" title="Absences" aria-label="Absences">💼</button>
+          <button class="icon" id="statsBtn" title="Statistiques" aria-label="Statistiques">📈</button>
+          <button class="icon" id="settingsBtn" title="Paramètres" aria-label="Paramètres">⚙️</button>
+        </div>
+      </div>
 
-  <div class="week">
-    <div id="lundi" class="day">
-      <h3>Lundi</h3>
-      <div class="tasks">
-        <div class="task interieur">Arroser les plantes intérieures</div>
-        <div class="task exterieur">Sortir les poubelles</div>
+      <div class="week-wrap">
+        <div class="week-view" id="weekView"></div>
+      </div>
+
+      <!-- Panneau absences (repliable) -->
+      <div class="month" id="absencePanel" style="display:none">
+        <div class="month-top">
+          <button class="btn" id="prevM" title="Mois précédent">‹</button>
+          <div class="month-title" id="monthTitle">Mois</div>
+          <button class="btn" id="nextM" title="Mois suivant">›</button>
+          <button class="btn" id="closeAbs" title="Fermer">✖</button>
+        </div>
+        <div class="days-head"><div>lu</div><div>ma</div><div>me</div><div>je</div><div>ve</div><div>sa</div><div>di</div></div>
+        <div class="grid" id="monthGrid"></div>
       </div>
     </div>
-    <div id="mardi" class="day">
-      <h3>Mardi</h3>
-      <div class="tasks">
-        <div class="task interieur">Faire la lessive</div>
-        <div class="task exterieur">Faire les courses</div>
+
+    <!-- RIGHT -->
+    <div class="right">
+      <div class="right-head">
+        <div class="title" style="font-size:16px">9 prochaines tâches</div>
+        <div class="sub">Appuie pour valider (popup Yonice / Marine)</div>
       </div>
+      <div class="tasks" id="tasksGrid"></div>
     </div>
-    <div id="mercredi" class="day">
-      <h3>Mercredi</h3>
-      <div class="tasks">
-        <div class="task exterieur">Arroser le jardin</div>
-        <div class="task interieur">Nettoyer la cuisine</div>
-      </div>
-    </div>
-    <div id="jeudi" class="day">
-      <h3>Jeudi</h3>
-      <div class="tasks">
-        <div class="task interieur">Nettoyer la salle de bain</div>
-        <div class="task loisir">Sortie au parc</div>
-      </div>
-    </div>
-    <div id="vendredi" class="day">
-      <h3>Vendredi</h3>
-      <div class="tasks">
-        <div class="task interieur">Ranger le salon</div>
-        <div class="task exterieur">Nettoyer la voiture</div>
-      </div>
-    </div>
-    <div id="samedi" class="day">
-      <h3>Samedi</h3>
-      <div class="tasks">
-        <div class="task exterieur">Tondre la pelouse</div>
-        <div class="task loisir">Aller au cinéma</div>
-      </div>
-    </div>
-    <div id="dimanche" class="day">
-      <h3>Dimanche</h3>
-      <div class="tasks">
-        <div class="task loisir">Préparer le repas de famille</div>
-        <div class="task loisir">Lecture et repos</div>
+  </div>
+
+  <!-- MODAL -->
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTaskName">
+    <div class="dialog">
+      <h3 id="modalTaskName">Qui a fait… ?</h3>
+      <div class="who">
+        <button class="wbtn yonice" id="whoYonice">Yonice</button>
+        <button class="wbtn marine" id="whoMarine">Marine</button>
       </div>
     </div>
   </div>
 
-  <div class="stats">
-    <h2>Statistiques</h2>
-    <p>(Contenu des statistiques inchangé)</p>
+  <!-- SETTINGS -->
+  <div class="panel" id="settingsPanel" aria-label="Panneau paramètres">
+    <div class="p-head">Paramètres</div>
+    <div class="p-body">
+      <button class="btn" id="themeToggle">Basculer clair / sombre</button>
+      <div>
+        <label><input type="checkbox" id="autoChk"> Auto-répartir après chaque changement</label>
+      </div>
+      <hr>
+      <div style="font-weight:600">⚙️ Objectifs</div>
+      <div class="row">
+        <div><label>Cible idéale (min)</label><input id="targetInput" type="number" min="10" step="5" value="75"></div>
+        <div><label>Plafond max (min)</label><input id="maxInput" type="number" min="10" step="5" value="90"></div>
+      </div>
+      <hr>
+      <div style="font-weight:600">➕ Ajouter une tâche</div>
+      <div class="row">
+        <div><label>Nom</label><input id="addName" placeholder="Ex. Nettoyer frigo"></div>
+        <div><label>Durée</label><input id="addDur" type="number" min="1" step="1" value="30"></div>
+        <div><label>Fréquence (jours)</label><input id="addFreq" type="number" min="1" step="1" value="7"></div>
+      </div>
+      <button class="btn" id="addBtn">Ajouter</button>
+      <hr>
+      <div style="font-weight:600">✏️ Modifier une tâche</div>
+      <div><label>Choisir</label><select id="editSel"></select></div>
+      <div class="row">
+        <div><label>Nom</label><input id="editName"></div>
+        <div><label>Durée</label><input id="editDur" type="number" min="1"></div>
+        <div><label>Fréquence</label><input id="editFreq" type="number" min="1"></div>
+      </div>
+      <button class="btn" id="saveEdit">Enregistrer</button>
+      <hr>
+      <div style="font-weight:600">🗑️ Supprimer une tâche</div>
+      <div><label>Choisir</label><select id="delSel"></select></div>
+      <button class="btn" id="delBtn">Supprimer</button>
+    </div>
   </div>
 
-  <div class="absences">
-    <h2>Absences</h2>
-    <p>(Contenu des absences inchangé)</p>
+  <!-- STATS -->
+  <div class="panel" id="statsPanel" aria-label="Panneau statistiques">
+    <div class="p-head">Statistiques</div>
+    <div class="p-body">
+      <div><label>Période</label>
+        <select id="statsFilter">
+          <option value="month">Ce mois</option>
+          <option value="year">Cette année</option>
+        </select>
+      </div>
+      <div class="chart"><canvas id="pie"></canvas></div>
+      <div class="chart"><canvas id="bars"></canvas></div>
+    </div>
   </div>
 
-  <script>
-    const CLIENT_ID = '691551955911-i6mhvllgop4f1u5q2k144tmqvt6q2pei.apps.googleusercontent.com';
-    const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"];
-    const SCOPES = "https://www.googleapis.com/auth/calendar.readonly";
+<script>
+/******************** CONFIG GAPI + GIS *************************/
+const CLIENT_ID = "691551955911-i6mhvllgop4f1u5q2k144tmqvt6q2pei.apps.googleusercontent.com";
+const SCOPES    = "https://www.googleapis.com/auth/calendar.readonly";
+let tokenClient; // GIS token client
+let gapiInited = false;
+let gisInited = false;
 
-    function initClient() {
-      gapi.client.init({
-        clientId: CLIENT_ID,
+// Called when gapi script loads
+window.addEventListener('load', () => {
+  // Wait for both libraries to be ready
+  if (window.gapi) {
+    gapi.load('client', async () => {
+      await gapi.client.init({
+        discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
+      });
+      gapiInited = true; maybeEnable();
+    });
+  }
+
+  let gisReadyInterval = setInterval(() => {
+    if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
         scope: SCOPES,
-        discoveryDocs: DISCOVERY_DOCS
-      }).then(() => {
-        // Au chargement, demander la connexion si nécessaire
-        if (!gapi.auth2.getAuthInstance().isSignedIn.get()) {
-          gapi.auth2.getAuthInstance().signIn();
-        }
-        // Si déjà connecté, charger les événements immédiatement
-        if (gapi.auth2.getAuthInstance().isSignedIn.get()) {
-          loadCalendarEvents();
-        }
-        // Écouter les changements d'état de connexion
-        gapi.auth2.getAuthInstance().isSignedIn.listen(signedIn => {
-          if (signedIn) {
-            loadCalendarEvents();
+        callback: async (resp) => {
+          if (resp && resp.access_token) {
+            gapi.client.setToken({access_token: resp.access_token});
+            await listEvents();
           }
-        });
+        }
       });
+      gisInited = true; maybeEnable();
+      clearInterval(gisReadyInterval);
     }
+  }, 50);
+});
 
-    function loadCalendarEvents() {
-      // Nettoyer les événements précédents (si appel répété)
-      document.querySelectorAll('.tasks .event').forEach(el => el.remove());
+function maybeEnable(){
+  if (gapiInited && gisInited){
+    // Request consent token on first load
+    tokenClient.requestAccessToken({ prompt: 'consent' });
+  }
+}
 
-      // Calculer la semaine courante (du lundi au dimanche)
-      const now = new Date();
-      const today = now.getDay(); // 0 = dimanche, 1 = lundi, ... 6 = samedi
-      // Trouver le lundi de la semaine en cours
-      const monday = new Date(now);
-      monday.setHours(0, 0, 0, 0);
-      const diffToMonday = today === 0 ? -6 : 1 - today;
-      monday.setDate(now.getDate() + diffToMonday);
-      // Lundi suivant pour la fin de la plage (exclu)
-      const nextMonday = new Date(monday);
-      nextMonday.setDate(monday.getDate() + 7);
-      nextMonday.setHours(0, 0, 0, 0);
+/******************** Données & stockage *************************/
+const TASKS_KEY='tasks_v6';
+const ABS_KEY='absences_v6';
+const LOGS_KEY='logs_v6';
 
-      const timeMin = monday.toISOString();
-      const timeMax = nextMonday.toISOString();
+let tasks = JSON.parse(localStorage.getItem(TASKS_KEY) || '[]');
+let absences = JSON.parse(localStorage.getItem(ABS_KEY) || '[]'); // ["YYYY-MM-DD", ...]
+let logs = JSON.parse(localStorage.getItem(LOGS_KEY) || '[]'); // {date, taskId, who, duration}
 
-      const calendars = [
-        { id: 'moissonnieryonice@gmail.com', className: 'yonice' },
-        { id: 'marine.penon38@gmail.com', className: 'marine' },
-        { id: 'marineetyonice@gmail.com', className: 'commun' }
-      ];
+function saveAll(){
+  localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+  localStorage.setItem(ABS_KEY, JSON.stringify(absences));
+  localStorage.setItem(LOGS_KEY, JSON.stringify(logs));
+}
 
-      calendars.forEach(cal => {
-        gapi.client.calendar.events.list({
-          calendarId: cal.id,
-          timeMin: timeMin,
-          timeMax: timeMax,
-          singleEvents: true,
-          orderBy: 'startTime'
-        }).then(response => {
-          const events = response.result.items;
-          if (events && events.length > 0) {
-            events.forEach(event => {
-              // Récupérer la date/heure de début de l'événement
-              let start = event.start.dateTime || event.start.date;
-              let eventDate = new Date(start);
-              // Ajuster si événement sur la journée entière (date uniquement)
-              if (event.start.date && !event.start.dateTime) {
-                // Utiliser midi pour éviter les décalages de fuseau horaire
-                eventDate = new Date(event.start.date + 'T12:00:00');
-              }
-              const dayIndex = eventDate.getDay(); // jour de la semaine (0-6)
-              // Identifier la colonne du jour correspondante
-              let dayId = '';
-              switch (dayIndex) {
-                case 0: dayId = 'dimanche'; break;
-                case 1: dayId = 'lundi'; break;
-                case 2: dayId = 'mardi'; break;
-                case 3: dayId = 'mercredi'; break;
-                case 4: dayId = 'jeudi'; break;
-                case 5: dayId = 'vendredi'; break;
-                case 6: dayId = 'samedi'; break;
-              }
-              if (dayId) {
-                const container = document.querySelector('#' + dayId + ' .tasks');
-                if (container) {
-                  // Créer l'élément pour l'événement
-                  const eventEl = document.createElement('div');
-                  eventEl.className = 'task event ' + cal.className;
-                  // Formater l'heure si ce n'est pas un événement "journée entière"
-                  let timeText = '';
-                  if (event.start.dateTime) {
-                    const eventTime = new Date(event.start.dateTime);
-                    timeText = eventTime.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) + ' - ';
-                  }
-                  const title = event.summary || '(Sans titre)';
-                  eventEl.textContent = timeText + title;
-                  container.appendChild(eventEl);
-                }
-              }
-            });
-          }
-        }, error => {
-          console.error('Erreur lors du chargement des événements pour ' + cal.id, error);
-        });
-      });
-    }
+/******************** Utils dates *************************/
+const pad = n => String(n).padStart(2,'0');
+const toISODateLocal = (d)=>{
+  const x = new Date(d);
+  const y = new Date(x.getFullYear(), x.getMonth(), x.getDate());
+  return `${y.getFullYear()}-${pad(y.getMonth()+1)}-${pad(y.getDate())}`;
+};
+const todayISO = () => toISODateLocal(new Date());
+const addDaysISO = (iso, n)=>{
+  const [Y,M,D] = iso.split('-').map(Number);
+  return toISODateLocal(new Date(Y, M-1, D + n));
+};
+const mondayOf = (weekOffset=0) => {
+  const now = new Date();
+  const wd = (now.getDay()||7); // 1..7
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - wd + 1 + weekOffset*7);
+  return toISODateLocal(monday);
+};
+const frDay = d => new Date(d).toLocaleDateString('fr-FR',{weekday:'long'});
+const frDate = d => new Date(d).toLocaleDateString('fr-FR',{day:'numeric',month:'long'});
+function getWeekNumber(d){
+  d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = d.getUTCDay() || 7; d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+}
+const isWeekend = iso => { const wd = new Date(iso).getDay(); return wd===0 || wd===6; };
 
-    // Charger le client Google API et la librairie d'authentification OAuth 2.0, puis initier
-    gapi.load('client:auth2', initClient);
-  </script>
+/******************** Google Calendar *************************/
+let events = [];
+async function listEvents(){
+  try{
+    const resp = await gapi.client.calendar.events.list({
+      calendarId: 'primary',
+      timeMin: new Date().toISOString(),
+      showDeleted: false,
+      singleEvents: true,
+      maxResults: 50,
+      orderBy: 'startTime'
+    });
+    events = resp.result.items || [];
+    renderAll();
+  }catch(e){
+    console.warn('Erreur events', e);
+  }
+}
+
+/******************** Rendu semaine *************************/
+let weekOffset = 0;
+
+function groupByDate(items, getDateStr){
+  const map = new Map();
+  for(const it of items){
+    const k = getDateStr(it);
+    if(!map.has(k)) map.set(k, []);
+    map.get(k).push(it);
+  }
+  return map;
+}
+
+function makePill(text, classes=[], badgeText){
+  const d = document.createElement('div');
+  d.className = 'pill ' + classes.join(' ');
+  const left = document.createElement('span'); left.textContent = text;
+  d.appendChild(left);
+  if(badgeText!==undefined){
+    const b = document.createElement('span'); b.className='badge'; b.textContent = badgeText;
+    d.appendChild(b);
+  }
+  return d;
+}
+
+function renderWeek(){
+  const weekView = document.getElementById('weekView');
+  weekView.innerHTML = '';
+
+  const mondayISO_ = mondayOf(weekOffset);
+  const mondayDate = new Date(mondayISO_);
+
+  // En-tête semaine
+  const monday = new Date(mondayISO_);
+  const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()+6);
+  const wkNum = getWeekNumber(monday);
+  document.getElementById('weekTitle').textContent = `Semaine ${wkNum}`;
+  document.getElementById('weekSub').textContent = `${frDate(monday)} – ${frDate(sunday)}`;
+
+  // Préparer index par date
+  const eventsByDate = groupByDate(events, ev => toISODateLocal(ev.start.date || ev.start.dateTime));
+  const tasksByDate = groupByDate(tasks.filter(t=>t.nextDue), t => t.nextDue);
+
+  const frag = document.createDocumentFragment();
+  for(let i=0;i<7;i++){
+    const dISO = addDaysISO(mondayISO_, i);
+    const day = document.createElement('div');
+    day.className = 'day';
+
+    // Absent?
+    if(absences.includes(dISO)) day.classList.add('absent');
+
+    const head = document.createElement('div'); head.className = 'day-head';
+    const wd = document.createElement('div'); wd.className='weekday'; wd.textContent = frDay(dISO);
+    const dt = document.createElement('div'); dt.className='date'; dt.textContent = frDate(dISO);
+    head.appendChild(wd); head.appendChild(dt); day.appendChild(head);
+
+    // Tâches locales dues
+    (tasksByDate.get(dISO)||[]).forEach(t=>{
+      const p = makePill(t.name, [], `${t.duration||0}m`);
+      day.appendChild(p);
+    });
+
+    // Evénements Calendar
+    (eventsByDate.get(dISO)||[]).forEach(ev=>{
+      const name = ev.summary || '(Sans titre)';
+      const p = makePill(name, ['event']);
+      day.appendChild(p);
+    });
+
+    frag.appendChild(day);
+  }
+  weekView.appendChild(frag);
+}
+
+/******************** Tâches: CRUD + planning *************************/
+function refreshSelectors(){
+  const editSel = document.getElementById('editSel');
+  const delSel = document.getElementById('delSel');
+  editSel.innerHTML = ''; delSel.innerHTML = '';
+  tasks.forEach((t,i)=>{
+    const o1 = document.createElement('option'); o1.value = i; o1.textContent = t.name; editSel.appendChild(o1);
+    const o2 = document.createElement('option'); o2.value = i; o2.textContent = t.name; delSel.appendChild(o2);
+  });
+}
+
+function recomputeNextDue(task){
+  // Si la tâche n'a jamais été faite: si nextDue existe, conserver; sinon planifier à aujourd'hui
+  if(!task.nextDue){ task.nextDue = todayISO(); }
+}
+
+function rebuildUpcoming(){
+  const grid = document.getElementById('tasksGrid');
+  grid.innerHTML = '';
+  const items = tasks
+    .map((t, idx)=>({ ...t, _idx: idx }))
+    .filter(t=>t.nextDue)
+    .sort((a,b)=> a.nextDue.localeCompare(b.nextDue))
+    .slice(0,9);
+
+  const frag = document.createDocumentFragment();
+  items.forEach(t=>{
+    const card = document.createElement('div');
+    const delta = (new Date(t.nextDue) - new Date(todayISO()))/86400000;
+    card.className = 'card ' + (delta<0? 'late':'upcoming');
+    card.tabIndex = 0;
+
+    const name = document.createElement('div'); name.className='name'; name.textContent = t.name;
+    const meta = document.createElement('div'); meta.className='meta'; meta.textContent = `durée ${t.duration}m · tous ${t.freq} j`;
+    const days = document.createElement('div'); days.className='days';
+    days.textContent = delta<0? `${Math.abs(delta)} j de retard` : (delta===0? "aujourd'hui" : `J-${delta}`);
+
+    card.appendChild(name); card.appendChild(meta); card.appendChild(days);
+    card.addEventListener('click', ()=> openModal(t._idx));
+    frag.appendChild(card);
+  });
+  grid.appendChild(frag);
+}
+
+function openModal(taskIndex){
+  const t = tasks[taskIndex];
+  document.getElementById('modalTaskName').textContent = `Qui a fait: ${t.name} ?`;
+  const modal = document.getElementById('modal');
+  modal.style.display='flex';
+  const close = ()=>{ modal.style.display='none'; };
+  const validate = who =>{
+    // Log
+    logs.push({date: todayISO(), taskId: taskIndex, who, duration: t.duration||0});
+    // Prochaine date
+    const base = t.nextDue && new Date(t.nextDue) > new Date(todayISO()) ? t.nextDue : todayISO();
+    t.nextDue = addDaysISO(base, t.freq||7);
+    saveAll();
+    close();
+    renderAll();
+  };
+  document.getElementById('whoYonice').onclick = ()=> validate('Yonice');
+  document.getElementById('whoMarine').onclick = ()=> validate('Marine');
+  modal.addEventListener('click', (e)=>{ if(e.target===modal) close(); }, { once:true });
+}
+
+/******************** Absences: mois *************************/
+let monthCursor = toISODateLocal(new Date()); // YYYY-MM-DD (jour quelconque du mois courant)
+
+function renderMonth(){
+  const [Y,M] = monthCursor.split('-').map(Number);
+  const first = new Date(Y, M-1, 1);
+  const firstWeekday = (first.getDay()||7); // 1..7, lundi=1
+  const daysInMonth = new Date(Y, M, 0).getDate();
+  const grid = document.getElementById('monthGrid');
+  grid.innerHTML = '';
+  document.getElementById('monthTitle').textContent = first.toLocaleDateString('fr-FR', {month:'long', year:'numeric'});
+
+  // Blanks from Monday
+  for(let b=1; b<firstWeekday; b++){
+    const ph = document.createElement('div');
+    grid.appendChild(ph);
+  }
+  for(let d=1; d<=daysInMonth; d++){
+    const iso = toISODateLocal(new Date(Y, M-1, d));
+    const cell = document.createElement('div');
+    cell.className = 'cell' + (isWeekend(iso)? ' wknd':'');
+    if(iso===todayISO()) cell.classList.add('today');
+    if(absences.includes(iso)) cell.classList.add('abs');
+    cell.textContent = d;
+    cell.addEventListener('click', ()=>{
+      const idx = absences.indexOf(iso);
+      if(idx>=0) absences.splice(idx,1); else absences.push(iso);
+      saveAll(); renderMonth(); renderWeek();
+    });
+    grid.appendChild(cell);
+  }
+}
+
+/******************** Stats *************************/
+let pieChart, barChart;
+function renderStats(){
+  const period = document.getElementById('statsFilter').value; // 'month' | 'year'
+  const now = new Date();
+  const start = period==='month' ? new Date(now.getFullYear(), now.getMonth(), 1)
+                                 : new Date(now.getFullYear(), 0, 1);
+  const startISO = toISODateLocal(start);
+
+  const filt = logs.filter(l => l.date >= startISO);
+  const sumByWho = { Yonice:0, Marine:0 };
+  const byDay = {};
+  for(const l of filt){
+    sumByWho[l.who] = (sumByWho[l.who]||0) + (l.duration||0);
+    byDay[l.date] = (byDay[l.date]||0) + (l.duration||0);
+  }
+
+  // Pie
+  const pctx = document.getElementById('pie');
+  if (pieChart) pieChart.destroy();
+  pieChart = new Chart(pctx, { type:'pie', data:{ labels:Object.keys(sumByWho), datasets:[{ data:Object.values(sumByWho) }] }, options:{ responsive:true } });
+
+  // Bars (7 derniers jours)
+  const labels = []; const data = [];
+  for(let i=6;i>=0;i--){
+    const iso = addDaysISO(todayISO(), -i);
+    labels.push(new Date(iso).toLocaleDateString('fr-FR',{weekday:'short'}));
+    data.push(byDay[iso]||0);
+  }
+  const bctx = document.getElementById('bars');
+  if (barChart) barChart.destroy();
+  barChart = new Chart(bctx, { type:'bar', data:{ labels, datasets:[{ label:'Durée (min)', data }] }, options:{ responsive:true } });
+}
+
+/******************** UI wiring *************************/
+function renderAll(){
+  // Recompute defaults for tasks without nextDue
+  tasks.forEach(recomputeNextDue);
+  saveAll();
+  renderWeek();
+  rebuildUpcoming();
+}
+
+function initUI(){
+  document.getElementById('todayBtn').addEventListener('click', ()=>{ weekOffset=0; renderWeek(); });
+  document.getElementById('prevW').addEventListener('click', ()=>{ weekOffset--; renderWeek(); });
+  document.getElementById('nextW').addEventListener('click', ()=>{ weekOffset++; renderWeek(); });
+
+  const settingsPanel = document.getElementById('settingsPanel');
+  document.getElementById('settingsBtn').addEventListener('click', ()=> settingsPanel.classList.toggle('open'));
+  document.getElementById('themeToggle').addEventListener('click', ()=> document.body.classList.toggle('dark'));
+
+  const statsPanel = document.getElementById('statsPanel');
+  document.getElementById('statsBtn').addEventListener('click', ()=> { statsPanel.classList.toggle('open'); renderStats(); });
+  document.getElementById('statsFilter').addEventListener('change', renderStats);
+
+  const absPanel = document.getElementById('absencePanel');
+  document.getElementById('absenceBtn').addEventListener('click', ()=>{ absPanel.style.display='block'; renderMonth(); });
+  document.getElementById('closeAbs').addEventListener('click', ()=> absPanel.style.display='none');
+  document.getElementById('prevM').addEventListener('click', ()=>{ const d=new Date(monthCursor); d.setMonth(d.getMonth()-1); monthCursor=toISODateLocal(d); renderMonth(); });
+  document.getElementById('nextM').addEventListener('click', ()=>{ const d=new Date(monthCursor); d.setMonth(d.getMonth()+1); monthCursor=toISODateLocal(d); renderMonth(); });
+
+  // CRUD tâches
+  document.getElementById('addBtn').addEventListener('click', ()=>{
+    const name = document.getElementById('addName').value.trim();
+    const duration = Number(document.getElementById('addDur').value)||0;
+    const freq = Math.max(1, Number(document.getElementById('addFreq').value)||7);
+    if(!name) return;
+    tasks.push({ name, duration, freq, nextDue: todayISO() });
+    saveAll(); refreshSelectors(); renderAll();
+    document.getElementById('addName').value='';
+  });
+
+  document.getElementById('editSel').addEventListener('change', (e)=>{
+    const t = tasks[e.target.value];
+    if(!t) return;
+    document.getElementById('editName').value = t.name;
+    document.getElementById('editDur').value = t.duration;
+    document.getElementById('editFreq').value = t.freq;
+  });
+
+  document.getElementById('saveEdit').addEventListener('click', ()=>{
+    const i = Number(document.getElementById('editSel').value);
+    const t = tasks[i]; if(!t) return;
+    const name = document.getElementById('editName').value.trim();
+    const duration = Number(document.getElementById('editDur').value)||t.duration;
+    const freq = Math.max(1, Number(document.getElementById('editFreq').value)||t.freq);
+    if(name) t.name = name; t.duration = duration; t.freq = freq;
+    saveAll(); refreshSelectors(); renderAll();
+  });
+
+  document.getElementById('delBtn').addEventListener('click', ()=>{
+    const i = Number(document.getElementById('delSel').value);
+    if(isNaN(i)) return;
+    tasks.splice(i,1);
+    saveAll(); refreshSelectors(); renderAll();
+  });
+
+  // Répartition auto (placeholder simple: pousse les échéances tombant un jour d'absence au jour suivant)
+  document.getElementById('autoBtn').addEventListener('click', ()=>{
+    tasks.forEach(t=>{
+      while(absences.includes(t.nextDue)){
+        t.nextDue = addDaysISO(t.nextDue, 1);
+      }
+    });
+    saveAll(); renderAll();
+  });
+
+  refreshSelectors();
+}
+
+/******************** Boot *************************/
+(function boot(){
+  initUI();
+  renderAll(); // affichage initial (events viendront ensuite)
+})();
+</script>
+
 </body>
 </html>
