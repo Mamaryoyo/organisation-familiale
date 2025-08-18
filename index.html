@@ -1,390 +1,642 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <title>Organisation familiale</title>
-  <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #f9f9f9;
-      color: #333;
-      display: flex;
-      height: 100vh;
-    }
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Organisation familiale</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --text:#2e2e2e; --muted:#6b7280; --line:#e5e7eb;
+    --blue:#2563eb; --yellow:#facc15; --green:#22c55e; --orange:#f59e0b; --red:#ef4444;
+    --red-soft:#fee2e2; --red-soft-dark:rgba(239,68,68,.18);
+    --card:#ffffff; --card-soft:#f3f4f6; --shadow:0 1px 3px rgba(0,0,0,.08);
+  }
+  body.dark{
+    --bg:#1f1f23; --panel:#2b2b31; --text:#e5e5e5; --muted:#9ca3af; --line:#3b3b45;
+    --card:#2b2b31; --card-soft:#3a3a42; --shadow:0 1px 3px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family:Inter,system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+    background:var(--bg); color:var(--text); display:flex; height:100vh; overflow:hidden;
+    transition:background .3s,color .3s;
+  }
 
-    /* Layout */
-    .container {
-      display: flex;
-      width: 100%;
-      height: 100%;
-    }
+  .app{display:flex; flex:1; width:100%; height:100%;}
+  .left{flex:2; display:flex; flex-direction:column; border-right:1px solid var(--line); min-width:560px;}
+  .right{flex:1; display:flex; flex-direction:column; min-width:360px;}
 
-    .planning {
-      flex: 2;
-      display: flex;
-      flex-direction: column;
-      border-right: 1px solid #ddd;
-      padding: 10px;
-    }
+  .bar{display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5}
+  .title{font-weight:600; font-size:18px}
+  .sub{font-size:13px; color:var(--muted)}
+  .bar-left{display:flex; flex-direction:column; gap:2px}
+  .bar-right{display:flex; align-items:center; gap:8px}
+  .btn{background:var(--panel); border:1px solid var(--line); padding:6px 10px; border-radius:8px; cursor:pointer; box-shadow:var(--shadow); color:var(--text)}
+  .btn:hover{filter:brightness(0.98)}
+  .icon{background:var(--panel); border:1px solid var(--line); padding:6px 10px; border-radius:8px; cursor:pointer; font-size:18px; line-height:1; box-shadow:var(--shadow); color:var(--text)}
 
-    .tasks {
-      flex: 1;
-      padding: 10px;
-      display: flex;
-      flex-wrap: wrap;
-      align-content: flex-start;
-      gap: 10px;
-      background: #fff;
-    }
+  .week-wrap{flex:1; overflow:hidden; background:var(--panel)}
+  .week-view{display:flex; gap:8px; padding:12px; transform:translateX(0); transition:transform .35s ease}
+  .day{flex:1; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px; display:flex; flex-direction:column; align-items:stretch; box-shadow:var(--shadow); min-width:0}
+  .day-head{display:flex; flex-direction:column; align-items:center; margin-bottom:8px}
+  .weekday{font-size:16px; font-weight:400; text-transform:capitalize}
+  .date{font-size:13px; color:var(--muted)}
+  .today-ring{border:2px solid var(--blue); border-radius:10px; padding:2px 6px}
+  .pill{margin-top:6px; background:var(--panel); border-radius:10px; padding:8px; font-size:12px; border-left:6px solid #ccc; box-shadow:var(--shadow); display:flex; align-items:center; justify-content:space-between; gap:8px}
+  .pill .badge{font-size:11px; padding:2px 6px; border-radius:999px; background:#e5e7eb; color:#111}
+  body.dark .pill .badge{background:#444; color:#eee}
+  .pill.yonice{border-left-color:var(--blue)}
+  .pill.marine{border-left-color:var(--yellow)}
+  .absent{background:linear-gradient(180deg, rgba(239,68,68,.12), rgba(239,68,68,.08)); outline:1px dashed rgba(239,68,68,.6);}
+  .day-foot{margin-top:auto; display:flex; flex-direction:column; align-items:center; gap:6px}
+  .load-chip{font-size:11px; color:var(--muted); background:var(--card-soft); border:1px solid var(--line); border-radius:999px; padding:2px 8px}
+  .load-bar{height:6px; width:80%; border-radius:4px; background:var(--line); overflow:hidden}
+  .load-fill{height:100%; border-radius:4px}
 
-    /* Semaine */
-    .week {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
-      gap: 8px;
-      flex: 1;
-    }
+  .month{background:var(--panel); border-top:1px solid var(--line); padding:10px 12px}
+  .month-top{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:6px}
+  .month-title{font-weight:600; flex:1; text-align:center}
+  .days-head{display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:6px; color:var(--muted); font-size:11px; text-align:center}
+  .grid{display:grid; grid-template-columns:repeat(7,1fr); gap:6px}
+  .cell{
+    width:34px; height:34px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px; cursor:pointer; user-select:none;
+    background:transparent; border:1px solid var(--line); color:var(--text);
+    transition:transform .08s ease, background .2s ease, border-color .2s ease;
+  }
+  .cell:hover{transform:scale(1.04)}
+  .cell.today{box-shadow:0 0 0 2px var(--blue) inset; border-color:var(--blue); font-weight:700}
+  .cell.wknd{background:var(--card-soft); color:var(--muted)}
+  .cell.abs{background:var(--red); color:#fff; border-color:var(--red)}
 
-    .day-col {
-      background: #fafafa;
-      border: 1px solid #eee;
-      border-radius: 6px;
-      padding: 6px;
-      font-size: 0.9em;
-      display: flex;
-      flex-direction: column;
-    }
+  .right-head{padding:12px 14px; background:var(--panel); border-bottom:1px solid var(--line)}
+  .tasks{flex:1; padding:12px; display:grid; grid-template-columns:repeat(3,1fr); gap:10px; overflow:auto}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; text-align:center; box-shadow:var(--shadow); cursor:pointer; transition:transform .12s ease, opacity .25s ease}
+  .card:hover{transform:translateY(-1px)}
+  .card.fade{opacity:0; transform:scale(.9)}
+  .name{font-weight:600; font-size:14px; margin:0}
+  .meta{font-size:12px; color:var(--muted); margin-top:4px}
+  .days{font-weight:800; font-size:26px; margin-top:6px}
+  .upcoming{background:var(--card-soft)}
+  body.dark .upcoming{background:var(--card)}
+  .late{background:var(--red-soft); border-color:var(--red)}
+  body.dark .late{background:var(--red-soft-dark); border-color:var(--red); color:#fca5a5}
 
-    .day-header {
-      font-weight: bold;
-      margin-bottom: 4px;
-      font-size: 0.95em;
-    }
+  .modal{position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.45); backdrop-filter:blur(6px); z-index:20}
+  .dialog{background:var(--panel); color:var(--text); padding:18px; border-radius:12px; width:min(360px,90vw); box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .dialog h3{margin:0 0 12px 0; font-size:16px; font-weight:600; text-align:center}
+  .who{display:flex; gap:10px}
+  .wbtn{flex:1; padding:10px; border-radius:10px; border:none; cursor:pointer; font-weight:700}
+  .wbtn.yonice{background:var(--blue); color:#fff}
+  .wbtn.marine{background:var(--yellow); color:#333}
 
-    /* Events Google */
-    .event-google {
-      background: #cce5ff;
-      border-left: 4px solid #007bff;
-      border-radius: 6px;
-      padding: 4px 6px;
-      margin: 4px 0;
-      font-size: 0.85em;
-      color: #003366;
-    }
-    .event-google .ev-title {
-      font-weight: bold;
-    }
-    .event-google .ev-time {
-      font-size: 0.75em;
-      color: #555;
-    }
+  .panel{position:fixed; top:0; right:-380px; width:380px; height:100%; background:var(--panel); border-left:1px solid var(--line); box-shadow:-4px 0 12px rgba(0,0,0,.12); transition:right .28s ease; z-index:25; display:flex; flex-direction:column}
+  .panel.open{right:0}
+  .p-head{padding:14px; border-bottom:1px solid var(--line); font-weight:700}
+  .p-body{padding:14px; overflow:auto; display:flex; flex-direction:column; gap:12px}
+  label{font-size:12px; color:var(--muted)}
+  input,select{width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--text)}
+  hr{border:none; border-top:1px solid var(--line); margin:6px 0}
+  .row{display:flex; gap:8px}
+  .row > *{flex:1}
 
-    /* Tâches */
-    .task {
-      flex: 1 1 calc(33% - 10px);
-      min-width: 100px;
-      height: 100px;
-      background: #f0f0f0;
-      border-radius: 8px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      font-size: 1em;
-      cursor: pointer;
-      transition: transform 0.2s ease, opacity 0.3s ease;
-    }
-    .task.red { background: #f8d7da; }
-    .task.gray { background: #e2e3e5; }
-    .task.done {
-      opacity: 0.3;
-      transform: scale(0.95);
-    }
+  .chart{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; box-shadow:var(--shadow)}
 
-    /* Barre d’outils */
-    .toolbar {
-      display: flex;
-      justify-content: flex-start;
-      gap: 10px;
-      margin-bottom: 8px;
-    }
-    .toolbar button {
-      padding: 5px 10px;
-      cursor: pointer;
-    }
-  </style>
+  @media (max-width:980px){ .left{min-width:0} .right{min-width:0} .tasks{grid-template-columns:repeat(2,1fr)} }
+  @media (max-width:720px){ .app{flex-direction:column} .tasks{grid-template-columns:1fr} }
+</style>
 </head>
 <body>
-  <div class="container">
-    <!-- Colonne gauche : Planning -->
-    <div class="planning">
-      <div class="toolbar">
-        <button id="prevWeek">←</button>
-        <button id="todayBtn">Aujourd'hui</button>
-        <button id="nextWeek">→</button>
-        <button id="authBtn" style="display:none;" onclick="handleAuthClick()">Connexion Google</button>
-        <button id="signoutBtn" style="display:none;" onclick="handleSignoutClick()">Déconnexion</button>
+  <div class="app">
+    <!-- LEFT -->
+    <div class="left">
+      <div class="bar">
+        <div class="bar-left">
+          <div class="title" id="weekTitle">Semaine</div>
+          <div class="sub" id="weekSub"></div>
+        </div>
+        <div class="bar-right">
+          <button class="btn" id="prevW" title="Semaine précédente">‹</button>
+          <button class="btn" id="todayBtn" title="Revenir à aujourd’hui">Aujourd’hui</button>
+          <button class="btn" id="nextW" title="Semaine suivante">›</button>
+          <button class="btn" id="autoBtn" title="Répartir la semaine">↔️</button>
+          <button class="icon" id="absenceBtn" title="Absences">💼</button>
+          <button class="icon" id="statsBtn" title="Statistiques">📈</button>
+          <button class="icon" id="settingsBtn" title="Paramètres">⚙️</button>
+        </div>
       </div>
-      <div class="week" id="weekView">
-        <!-- Colonnes des jours générées en JS -->
+
+      <div class="week-wrap">
+        <div class="week-view" id="weekView"></div>
+      </div>
+
+      <!-- Panneau absences (repliable) -->
+      <div class="month" id="absencePanel" style="display:none">
+        <div class="month-top">
+          <button class="btn" id="prevM" title="Mois précédent">‹</button>
+          <div class="month-title" id="monthTitle">Mois</div>
+          <button class="btn" id="nextM" title="Mois suivant">›</button>
+          <button class="btn" id="closeAbs" title="Fermer">✖</button>
+        </div>
+        <div class="days-head"><div>lu</div><div>ma</div><div>me</div><div>je</div><div>ve</div><div>sa</div><div>di</div></div>
+        <div class="grid" id="monthGrid"></div>
       </div>
     </div>
 
-    <!-- Colonne droite : 9 tâches -->
-    <div class="tasks" id="tasksView">
-      <!-- Tâches dynamiques -->
+    <!-- RIGHT -->
+    <div class="right">
+      <div class="right-head">
+        <div class="title" style="font-size:16px">9 prochaines tâches</div>
+        <div class="sub">Appuie pour valider (popup Yonice / Marine)</div>
+      </div>
+      <div class="tasks" id="tasksGrid"></div>
+    </div>
+  </div>
+
+  <!-- MODAL -->
+  <div class="modal" id="modal">
+    <div class="dialog">
+      <h3 id="modalTaskName">Qui a fait… ?</h3>
+      <div class="who">
+        <button class="wbtn yonice" id="whoYonice">Yonice</button>
+        <button class="wbtn marine" id="whoMarine">Marine</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="panel" id="settingsPanel">
+    <div class="p-head">Paramètres</div>
+    <div class="p-body">
+      <button class="btn" id="themeToggle">Basculer clair / sombre</button>
+      <div>
+        <label><input type="checkbox" id="autoChk"> Auto-répartir après chaque changement</label>
+      </div>
+      <hr>
+      <div style="font-weight:600">⚙️ Objectifs</div>
+      <div class="row">
+        <div><label>Cible idéale (min)</label><input id="targetInput" type="number" min="10" step="5" value="75"></div>
+        <div><label>Plafond max (min)</label><input id="maxInput" type="number" min="10" step="5" value="90"></div>
+      </div>
+      <hr>
+      <div style="font-weight:600">➕ Ajouter une tâche</div>
+      <div class="row">
+        <div><label>Nom</label><input id="addName" placeholder="Ex. Nettoyer frigo"></div>
+        <div><label>Durée</label><input id="addDur" type="number" min="1" step="1" value="30"></div>
+        <div><label>Fréquence (jours)</label><input id="addFreq" type="number" min="1" step="1" value="7"></div>
+      </div>
+      <button class="btn" id="addBtn">Ajouter</button>
+      <hr>
+      <div style="font-weight:600">✏️ Modifier une tâche</div>
+      <div><label>Choisir</label><select id="editSel"></select></div>
+      <div class="row">
+        <div><label>Nom</label><input id="editName"></div>
+        <div><label>Durée</label><input id="editDur" type="number" min="1"></div>
+        <div><label>Fréquence</label><input id="editFreq" type="number" min="1"></div>
+      </div>
+      <button class="btn" id="saveEdit">Enregistrer</button>
+      <hr>
+      <div style="font-weight:600">🗑️ Supprimer une tâche</div>
+      <div><label>Choisir</label><select id="delSel"></select></div>
+      <button class="btn" id="delBtn">Supprimer</button>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="panel" id="statsPanel">
+    <div class="p-head">Statistiques</div>
+    <div class="p-body">
+      <div><label>Période</label>
+        <select id="statsFilter">
+          <option value="month">Ce mois</option>
+          <option value="year">Cette année</option>
+        </select>
+      </div>
+      <div class="chart"><canvas id="pie"></canvas></div>
+      <div class="chart"><canvas id="bars"></canvas></div>
     </div>
   </div>
 
 <script>
-// =========================
-// Génération de la semaine
-// =========================
-const weekView = document.getElementById("weekView");
-
-// Obtenir le lundi d'une semaine donnée
-function getMonday(d) {
-  d = new Date(d);
-  const day = d.getDay();
-  const diff = d.getDate() - (day === 0 ? 6 : day - 1); // 0=dimanche → ramener à lundi
-  return new Date(d.setDate(diff));
+/* ========= Utils dates ========= */
+const fmtISO = d => { d=new Date(d); d.setHours(0,0,0,0); return d.toISOString().slice(0,10); };
+const todayISO = () => fmtISO(new Date());
+const addDays = (iso, n) => { const d=new Date(iso); d.setDate(d.getDate()+n); return fmtISO(d); };
+const mondayOf = (weeksFromNow=0) => { const d=new Date(); let wd=d.getDay(); if(wd===0) wd=7; d.setDate(d.getDate()-wd+1 + weeksFromNow*7); return fmtISO(d); };
+const frDay = d => new Date(d).toLocaleDateString('fr-FR',{weekday:'long'});
+const frDate = d => new Date(d).toLocaleDateString('fr-FR',{day:'numeric',month:'long'});
+function getWeekNumber(d){
+  d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = d.getUTCDay() || 7; d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 }
+const isWeekend = iso => { const wd = new Date(iso).getDay(); return wd===0 || wd===6; };
 
-let currentMonday = getMonday(new Date());
+/* ========= Storage keys ========= */
+const TASKS_KEY='tasks_v5';
+const ABS_KEY='absences_v5';
+const PREF_THEME='theme_pref';
+const AUTO_KEY='auto_balance_v1';
+const TARGET_KEY='target_minutes';
+const MAX_KEY='max_minutes';
 
-// Rendu de la semaine
-function renderWeek() {
-  weekView.innerHTML = "";
-  for (let i = 0; i < 7; i++) {
-    const day = new Date(currentMonday);
-    day.setDate(currentMonday.getDate() + i);
-
-    const col = document.createElement("div");
-    col.className = "day-col";
-    col.id = "col-" + day.toLocaleDateString("fr-FR", { weekday: "long" });
-
-    const header = document.createElement("div");
-    header.className = "day-header";
-    header.innerHTML = `${day.toLocaleDateString("fr-FR", { weekday: "long" })}<br>
-      <span style="font-weight:normal;font-size:0.85em;color:#666;">
-      ${day.getDate()} ${day.toLocaleDateString("fr-FR", { month: "long" })}
-      </span>`;
-
-    col.appendChild(header);
-    weekView.appendChild(col);
-  }
-}
-
-// Navigation entre semaines
-document.getElementById("prevWeek").addEventListener("click", () => {
-  currentMonday.setDate(currentMonday.getDate() - 7);
-  renderWeek();
-  if (gapi.client.getToken()) listUpcomingEvents();
-});
-document.getElementById("nextWeek").addEventListener("click", () => {
-  currentMonday.setDate(currentMonday.getDate() + 7);
-  renderWeek();
-  if (gapi.client.getToken()) listUpcomingEvents();
-});
-document.getElementById("todayBtn").addEventListener("click", () => {
-  currentMonday = getMonday(new Date());
-  renderWeek();
-  if (gapi.client.getToken()) listUpcomingEvents();
-});
-
-// Premier rendu
-renderWeek();
-</script>
-
-<script>
-// =========================
-// Gestion des tâches
-// =========================
-const tasksView = document.getElementById("tasksView");
-
-let tasks = [
-  { id: 1, name: "Vaisselle", dueIn: -1 },
-  { id: 2, name: "Courses", dueIn: 2 },
-  { id: 3, name: "Aspirateur", dueIn: 0 },
-  { id: 4, name: "Poubelles", dueIn: 1 },
-  { id: 5, name: "Lessive", dueIn: 3 },
-  { id: 6, name: "Cuisine", dueIn: -2 },
-  { id: 7, name: "Salle de bain", dueIn: 5 },
-  { id: 8, name: "Fenêtres", dueIn: 7 },
-  { id: 9, name: "Rangement", dueIn: 0 }
+/* ========= Data ========= */
+const DEFAULT_TASKS = [
+  {id:1, name:"Aspirateur RDC", duration:30, freqDays:7, nextDue:todayISO(), history:[]},
+  {id:2, name:"Aspirateur étage", duration:30, freqDays:7, nextDue:addDays(todayISO(),1), history:[]},
+  {id:3, name:"Serpillière RDC", duration:20, freqDays:14, nextDue:addDays(todayISO(),2), history:[]},
+  {id:4, name:"Serpillière étage", duration:20, freqDays:14, nextDue:addDays(todayISO(),3), history:[]},
+  {id:5, name:"Poussières meubles", duration:25, freqDays:14, nextDue:addDays(todayISO(),4), history:[]},
+  {id:6, name:"Vitres", duration:40, freqDays:30, nextDue:addDays(todayISO(),7), history:[]},
+  {id:7, name:"Changer draps", duration:20, freqDays:7, nextDue:addDays(todayISO(),5), history:[]},
+  {id:8, name:"Laver draps", duration:60, freqDays:7, nextDue:addDays(todayISO(),5), history:[]},
+  {id:9, name:"Plier linge", duration:30, freqDays:3, nextDue:addDays(todayISO(),1), history:[]},
+  {id:10, name:"Machine linge", duration:10, freqDays:2, nextDue:todayISO(), history:[]},
+  {id:11, name:"Nettoyer salle de bain", duration:30, freqDays:7, nextDue:addDays(todayISO(),6), history:[]},
+  {id:12, name:"Nettoyer WC", duration:15, freqDays:7, nextDue:addDays(todayISO(),6), history:[]},
+  {id:13, name:"Cuisine plan travail", duration:15, freqDays:2, nextDue:todayISO(), history:[]},
+  {id:14, name:"Cuisine four", duration:25, freqDays:30, nextDue:addDays(todayISO(),10), history:[]},
+  {id:15, name:"Frigo", duration:20, freqDays:14, nextDue:addDays(todayISO(),3), history:[]},
+  {id:16, name:"Courses alimentaires", duration:90, freqDays:7, nextDue:addDays(todayISO(),2), history:[]},
+  {id:17, name:"Batchcooking", duration:180, freqDays:7, nextDue:addDays(todayISO(),2), history:[]},
+  {id:18, name:"Sortir poubelles", duration:10, freqDays:7, nextDue:todayISO(), history:[]},
+  {id:19, name:"Sortir tri sélectif", duration:10, freqDays:14, nextDue:addDays(todayISO(),4), history:[]},
+  {id:20, name:"Arroser plantes", duration:10, freqDays:3, nextDue:addDays(todayISO(),1), history:[]},
+  {id:21, name:"Tondre pelouse", duration:60, freqDays:14, nextDue:addDays(todayISO(),6), history:[]},
+  {id:22, name:"Taille haie", duration:120, freqDays:90, nextDue:addDays(todayISO(),20), history:[]},
+  {id:23, name:"Mauvaises herbes", duration:45, freqDays:30, nextDue:addDays(todayISO(),7), history:[]}
 ];
 
-// Rendu
-function renderTasks() {
-  tasksView.innerHTML = "";
-  tasks.slice(0, 9).forEach(t => {
-    const div = document.createElement("div");
-    div.className = "task";
-    if (t.dueIn < 0) div.classList.add("red");
-    else if (t.dueIn > 0) div.classList.add("gray");
+let tasks = JSON.parse(localStorage.getItem(TASKS_KEY) || 'null') || DEFAULT_TASKS;
+let absences = JSON.parse(localStorage.getItem(ABS_KEY) || '[]'); // ISO dates
+let TARGET = +(localStorage.getItem(TARGET_KEY) || 75);
+let MAX = +(localStorage.getItem(MAX_KEY) || 90);
 
-    div.innerHTML = `
-      <strong>${t.name}</strong><br>
-      <span style="font-size:1.2em;">J${t.dueIn >= 0 ? "+"+t.dueIn : t.dueIn}</span>
-    `;
+const saveTasks = () => localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+const saveAbs   = () => localStorage.setItem(ABS_KEY, JSON.stringify(absences));
 
-    div.addEventListener("click", () => validateTask(t.id));
-    tasksView.appendChild(div);
-  });
-}
+/* ========= State ========= */
+let weekOffset = 0;
+let monthCursor = new Date(); monthCursor.setDate(1);
+let modalTaskId = null;
 
-// Validation popup
-function validateTask(taskId) {
-  const task = tasks.find(t => t.id === taskId);
-  if (!task) return;
+/* ========= Rendu semaine ========= */
+function renderWeek(){
+  const weekView = document.getElementById('weekView');
+  weekView.innerHTML = '';
+  const mondayISO = mondayOf(weekOffset);
+  const monday = new Date(mondayISO);
+  const sundayISO = fmtISO(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()+6));
 
-  const choice = confirm(`Qui a fait la tâche "${task.name}" ?\n\nClique OK pour Yonice, Annuler pour Marine`);
-  const doneBy = choice ? "Yonice" : "Marine";
+  document.getElementById('weekTitle').textContent = `Semaine n°${getWeekNumber(monday)}`;
+  document.getElementById('weekSub').textContent = `du ${new Date(mondayISO).toLocaleDateString('fr-FR')} au ${new Date(sundayISO).toLocaleDateString('fr-FR')}`;
 
-  alert(`✅ ${task.name} validée par ${doneBy}`);
-  tasks = tasks.filter(t => t.id !== taskId);
-  renderTasks();
-}
+  for(let i=0;i<7;i++){
+    const dISO = fmtISO(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()+i));
+    const day = document.createElement('div');
+    day.className = 'day' + (absences.includes(dISO) ? ' absent' : '');
 
-renderTasks();
-</script>
+    const head = document.createElement('div');
+    head.className = 'day-head';
+    const isToday = (dISO===todayISO());
+    head.innerHTML = `
+      <div class="weekday ${isToday?'today-ring':''}">${frDay(dISO)}</div>
+      <div class="date">${frDate(dISO)}</div>`;
+    day.appendChild(head);
 
-<!-- Google API -->
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="https://apis.google.com/js/api.js"></script>
-
-<script>
-// =========================
-// Google API - Calendar
-// =========================
-const CLIENT_ID = "691551955911-i6mhvllgop4f1u5q2k144tmqvt6q2pei.apps.googleusercontent.com";
-const API_KEY = "";
-const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"];
-const SCOPES = "https://www.googleapis.com/auth/calendar.readonly";
-
-let tokenClient;
-let gapiInited = false;
-let gisInited = false;
-
-function gapiLoaded() {
-  gapi.load("client", initializeGapiClient);
-}
-async function initializeGapiClient() {
-  await gapi.client.init({ apiKey: API_KEY, discoveryDocs: DISCOVERY_DOCS });
-  gapiInited = true;
-  maybeEnableButtons();
-}
-function gisLoaded() {
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: CLIENT_ID,
-    scope: SCOPES,
-    callback: "",
-  });
-  gisInited = true;
-  maybeEnableButtons();
-}
-function maybeEnableButtons() {
-  if (gapiInited && gisInited) {
-    document.getElementById("authBtn").style.display = "inline-block";
-  }
-}
-
-function handleAuthClick() {
-  tokenClient.callback = async (resp) => {
-    if (resp.error !== undefined) throw resp;
-    document.getElementById("authBtn").style.display = "none";
-    document.getElementById("signoutBtn").style.display = "inline-block";
-    await listUpcomingEvents();
-  };
-
-  if (gapi.client.getToken() === null) {
-    tokenClient.requestAccessToken({ prompt: "consent" });
-  } else {
-    tokenClient.requestAccessToken({ prompt: "" });
-  }
-}
-function handleSignoutClick() {
-  const token = gapi.client.getToken();
-  if (token !== null) {
-    google.accounts.oauth2.revoke(token.access_token);
-    gapi.client.setToken("");
-    document.getElementById("authBtn").style.display = "inline-block";
-    document.getElementById("signoutBtn").style.display = "none";
-    clearEvents();
-  }
-}
-
-async function listUpcomingEvents() {
-  let response;
-  try {
-    response = await gapi.client.calendar.events.list({
-      calendarId: "primary",
-      timeMin: currentMonday.toISOString(),
-      timeMax: new Date(currentMonday.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      showDeleted: false,
-      singleEvents: true,
-      maxResults: 50,
-      orderBy: "startTime"
+    let load=0;
+    tasks.forEach(t=>{
+      if(t.nextDue===dISO){
+        load += (t.duration||0);
+        const pill = document.createElement('div');
+        pill.className = 'pill ' + (t.owner || '');
+        pill.title = t.history?.length ? `Dernière fois: ${t.history[t.history.length-1].who} • ${new Date(t.history[t.history.length-1].date).toLocaleDateString('fr-FR')}` : 'Aucun historique';
+        pill.innerHTML = `<span>${t.name}</span><span class="badge">${t.duration}m</span>`;
+        day.appendChild(pill);
+      }
     });
-  } catch (err) {
-    console.error("Erreur API:", err.message);
-    return;
+
+    const foot = document.createElement('div'); foot.className='day-foot';
+    const chip = document.createElement('div'); chip.className='load-chip'; chip.textContent = load? `${load} min` : '—';
+    const bar=document.createElement('div'); bar.className='load-bar';
+    const fill=document.createElement('div'); fill.className='load-fill';
+    if(load<=TARGET) fill.style.background='var(--green)';
+    else if(load<=MAX) fill.style.background='var(--orange)';
+    else fill.style.background='var(--red)';
+    fill.style.width=Math.min(100, (MAX>0? (load/MAX*100):0))+'%';
+    bar.appendChild(fill);
+    foot.appendChild(chip); foot.appendChild(bar); day.appendChild(foot);
+
+    weekView.appendChild(day);
   }
+}
 
-  clearEvents();
-
-  const events = response.result.items;
-  if (!events || events.length === 0) {
-    console.log("📅 Aucun événement trouvé");
-    return;
-  }
-
-  events.forEach(event => {
-    const when = event.start.dateTime || event.start.date;
-    const day = new Date(when).getDay();
-
-    const dayMap = {
-      0: "dimanche",
-      1: "lundi",
-      2: "mardi",
-      3: "mercredi",
-      4: "jeudi",
-      5: "vendredi",
-      6: "samedi"
-    };
-
-    const colId = "col-" + dayMap[day];
-    const col = document.getElementById(colId);
-
-    if (col) {
-      const evDiv = document.createElement("div");
-      evDiv.className = "event-google";
-      evDiv.innerHTML = `
-        <span class="ev-title">📅 ${event.summary || "Sans titre"}</span><br>
-        <span class="ev-time">${when ? new Date(when).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : ""}</span>
-      `;
-      col.appendChild(evDiv);
-    }
+/* ========= Rendu 3x3 ========= */
+function renderGrid(){
+  const grid = document.getElementById('tasksGrid');
+  grid.innerHTML = '';
+  const now = new Date();
+  const sorted = tasks.map(t=>({ ...t, diff: Math.floor((new Date(t.nextDue)-now)/(1000*60*60*24)) }))
+                      .sort((a,b)=> a.diff - b.diff || a.duration - b.duration)
+                      .slice(0,9);
+  sorted.forEach(t=>{
+    const card = document.createElement('div');
+    card.className = 'card ' + (t.diff<=0?'late':'upcoming');
+    card.innerHTML = `<p class="name">${t.name}</p><p class="meta">${t.duration} min • ${t.freqDays} j</p><div class="days">${t.diff}</div>`;
+    card.onclick = ()=> openModal(t.id);
+    grid.appendChild(card);
   });
 }
 
-function clearEvents() {
-  document.querySelectorAll(".event-google").forEach(el => el.remove());
+/* ========= Modale validation ========= */
+function openModal(id){
+  modalTaskId = id;
+  const t = tasks.find(x=>x.id===id);
+  document.getElementById('modalTaskName').textContent = `Qui a fait « ${t.name} » ?`;
+  document.getElementById('modal').style.display = 'flex';
 }
-</script>
-
-<script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
-<script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
-
-<!-- Debug (optionnel) -->
-<div id="eventsDebug" style="display:none; padding:10px; font-size:0.8em; color:#666;"></div>
-<script>
-function debugInfo(msg) {
-  document.getElementById("eventsDebug").style.display = "block";
-  document.getElementById("eventsDebug").innerText = msg;
+function validate(who){
+  const t = tasks.find(x=>x.id===modalTaskId);
+  if(!t) return;
+  t.owner = who;
+  t.history = t.history || [];
+  t.history.push({ who, date: todayISO() });
+  // Replanifie et saute les absences
+  let nd = addDays(t.nextDue, t.freqDays);
+  let guard=0;
+  while(absences.includes(nd) && guard<370){ nd = addDays(nd,1); guard++; }
+  t.nextDue = nd;
+  saveTasks();
+  document.getElementById('modal').style.display = 'none';
+  if(isAuto()) autoRepartition(); // auto si activé
+  renderWeek(); renderGrid(); renderStatsIfOpen();
 }
-</script>
 
+/* ========= Mini-month (absences) ========= */
+function renderMonth(){
+  const title = document.getElementById('monthTitle');
+  title.textContent = monthCursor.toLocaleDateString('fr-FR',{month:'long', year:'numeric'});
+  const grid = document.getElementById('monthGrid'); grid.innerHTML='';
+  const y = monthCursor.getFullYear(), m = monthCursor.getMonth();
+  const first = new Date(y,m,1), last = new Date(y,m+1,0);
+  let start = first.getDay(); if(start===0) start=7; // Lundi=1
+  for(let i=1;i<start;i++){ const v=document.createElement('div'); grid.appendChild(v); }
+  for(let d=1; d<=last.getDate(); d++){
+    const iso = fmtISO(new Date(y,m,d));
+    const c = document.createElement('div');
+    const wknd = isWeekend(iso);
+    c.className = 'cell' + (wknd?' wknd':'') + (absences.includes(iso)?' abs':'') + (iso===todayISO()?' today':'');
+    c.textContent = d;
+    c.title = absences.includes(iso) ? 'Absent (cliquer pour retirer)' : (wknd ? 'Week-end (cliquer pour marquer absent)' : 'Marquer absent');
+    c.onclick = ()=> toggleAbsenceSafe(iso);
+    grid.appendChild(c);
+  }
+}
+function toggleAbsenceSafe(iso){
+  try{
+    const has = absences.includes(iso);
+    if(has){
+      absences = absences.filter(x=>x!==iso);
+    }else{
+      absences.push(iso);
+      // repousse les tâches pile ce jour vers prochain jour libre
+      tasks.forEach(t=>{
+        if(t.nextDue===iso){
+          let nd = addDays(iso,1), guard=0;
+          while(absences.includes(nd) && guard<370){ nd = addDays(nd,1); guard++; }
+          t.nextDue = nd;
+        }
+      });
+      saveTasks();
+    }
+    absences = Array.from(new Set(absences));
+    saveAbs();
+    if(isAuto()) autoRepartition();
+    renderMonth(); renderWeek(); renderGrid(); renderStatsIfOpen();
+  }catch(err){
+    console.error(err);
+    alert("Oups, une erreur est survenue lors du marquage d'absence.");
+  }
+}
+
+/* ========= Auto-répartition ========= */
+function isAuto(){ return localStorage.getItem(AUTO_KEY)==='1' || document.getElementById('autoChk').checked; }
+function setAuto(v){ localStorage.setItem(AUTO_KEY, v?'1':'0'); document.getElementById('autoChk').checked = v; }
+function autoRepartition(){
+  const mondayISO = mondayOf(weekOffset);
+  const monday = new Date(mondayISO);
+  const weekDays = Array.from({length:7},(_,i)=> fmtISO(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()+i)));
+  const load = {};
+  weekDays.forEach(d=> load[d] = { minutes:0, tasks:[] });
+
+  // Construire charge de la semaine courante
+  tasks.forEach(t=>{
+    if(load[t.nextDue]){ load[t.nextDue].minutes += t.duration; load[t.nextDue].tasks.push(t); }
+  });
+
+  // Pour chaque jour au-dessus du MAX, déplacer des tâches vers des jours <= TARGET
+  for(const iso of weekDays){
+    let safety=0;
+    while(load[iso].minutes > MAX && safety<100){
+      safety++;
+      // tâche déplaçable = la plus "légère" d'abord
+      const movable = load[iso].tasks.sort((a,b)=>a.duration-b.duration)[0];
+      if(!movable) break;
+
+      // chercher destination dans la même semaine, plus tard uniquement
+      let dest = null;
+      for(const cand of weekDays){
+        if(cand<=iso) continue;                    // pas avant
+        if(absences.includes(cand)) continue;      // pas sur absence
+        if(load[cand].minutes + movable.duration <= TARGET){ dest = cand; break; }
+      }
+      // si aucune destination <= TARGET, tenter la moins chargée non absente et > iso
+      if(!dest){
+        const candidates = weekDays.filter(d=> d>iso && !absences.includes(d));
+        if(candidates.length){
+          dest = candidates.sort((a,b)=> load[a].minutes - load[b].minutes)[0];
+        }
+      }
+      if(!dest) break; // rien à faire
+
+      // appliquer déplacement
+      movable.nextDue = dest;
+      // maj structures
+      load[iso].minutes -= movable.duration;
+      load[iso].tasks = load[iso].tasks.filter(t=>t.id!==movable.id);
+      load[dest].minutes += movable.duration;
+      load[dest].tasks.push(movable);
+    }
+  }
+
+  saveTasks();
+  renderWeek(); renderGrid(); renderStatsIfOpen();
+}
+
+/* ========= Stats ========= */
+let pie, bars;
+function renderStats(){
+  const filter = document.getElementById('statsFilter').value;
+  let hist = tasks.flatMap(t=>t.history||[]);
+  const now = new Date();
+  if(filter==='month'){
+    hist = hist.filter(h=> { const d=new Date(h.date); return d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear(); });
+  }else{
+    hist = hist.filter(h=> new Date(h.date).getFullYear()===now.getFullYear());
+  }
+  const counts = { yonice:0, marine:0 };
+  hist.forEach(h=> counts[h.who] = (counts[h.who]||0)+1 );
+  const status = { on:0, late:0 };
+  tasks.forEach(t=> (new Date(t.nextDue) < now ? status.late++ : status.on++ ));
+
+  const textColor = getComputedStyle(document.body).getPropertyValue('--text').trim();
+  if(pie) pie.destroy();
+  pie = new Chart(document.getElementById('pie'), {
+    type:'pie',
+    data:{ labels:['Yonice','Marine'], datasets:[{ data:[counts.yonice,counts.marine], backgroundColor:['#2563eb','#facc15'] }] },
+    options:{ plugins:{ legend:{ labels:{ color:textColor } } } }
+  });
+  if(bars) bars.destroy();
+  bars = new Chart(document.getElementById('bars'), {
+    type:'bar',
+    data:{ labels:['À temps','En retard'], datasets:[{ data:[status.on,status.late], backgroundColor:['#22c55e','#ef4444'] }] },
+    options:{ scales:{ x:{ ticks:{ color:textColor } }, y:{ beginAtZero:true, ticks:{ color:textColor } } }, plugins:{ legend:{ display:false } } }
+  });
+}
+function renderStatsIfOpen(){
+  if(document.getElementById('statsPanel').classList.contains('open')) renderStats();
+}
+
+/* ========= Settings ========= */
+function refreshSelects(){
+  const editSel = document.getElementById('editSel');
+  const delSel = document.getElementById('delSel');
+  editSel.innerHTML = ''; delSel.innerHTML = '';
+  tasks.forEach(t=>{
+    const o1=document.createElement('option'); o1.value=t.id; o1.textContent=t.name; editSel.appendChild(o1);
+    const o2=document.createElement('option'); o2.value=t.id; o2.textContent=t.name; delSel.appendChild(o2);
+  });
+  fillEdit();
+}
+function fillEdit(){
+  const id = parseInt(document.getElementById('editSel').value);
+  const t = tasks.find(x=>x.id===id); if(!t) return;
+  document.getElementById('editName').value = t.name;
+  document.getElementById('editDur').value = t.duration;
+  document.getElementById('editFreq').value = t.freqDays;
+}
+function addTask(){
+  const name = document.getElementById('addName').value.trim();
+  const dur = parseInt(document.getElementById('addDur').value);
+  const freq = parseInt(document.getElementById('addFreq').value);
+  if(!name || !dur || !freq){ alert('Complète les champs'); return; }
+  const id = tasks.length ? Math.max(...tasks.map(t=>t.id))+1 : 1;
+  tasks.push({ id, name, duration:dur, freqDays:freq, nextDue:todayISO(), history:[] });
+  saveTasks(); refreshSelects(); renderWeek(); renderGrid();
+}
+function saveEdit(){
+  const id = parseInt(document.getElementById('editSel').value);
+  const t = tasks.find(x=>x.id===id); if(!t) return;
+  const newName = document.getElementById('editName').value.trim();
+  const newDur  = parseInt(document.getElementById('editDur').value);
+  const newFreq = parseInt(document.getElementById('editFreq').value);
+  if(newName) t.name = newName;
+  if(newDur)  t.duration = newDur;
+  if(newFreq) t.freqDays = newFreq;
+  saveTasks(); refreshSelects(); renderWeek(); renderGrid();
+}
+function delTask(){
+  const id = parseInt(document.getElementById('delSel').value);
+  const t = tasks.find(x=>x.id===id);
+  if(!t) return;
+  if(!confirm(`Supprimer la tâche « ${t.name} » ?`)) return;
+  tasks = tasks.filter(x=>x.id!==id);
+  saveTasks(); refreshSelects(); renderWeek(); renderGrid();
+}
+
+/* ========= Thème ========= */
+function applyStoredTheme(){ const t = localStorage.getItem(PREF_THEME); if(t==='dark') document.body.classList.add('dark'); }
+function toggleTheme(){ document.body.classList.toggle('dark'); localStorage.setItem(PREF_THEME, document.body.classList.contains('dark') ? 'dark' : 'light'); }
+
+/* ========= Week slide ========= */
+function slideWeek(dir){
+  const el = document.getElementById('weekView');
+  el.style.transition='none';
+  el.style.transform=`translateX(${dir>0? '100%':'-100%'})`;
+  void el.offsetWidth; // reflow
+  weekOffset += dir;
+  renderWeek();
+  el.style.transition='transform .35s ease';
+  el.style.transform='translateX(0)';
+}
+
+/* ========= Events ========= */
+document.getElementById('prevW').onclick = ()=> slideWeek(-1);
+document.getElementById('nextW').onclick = ()=> slideWeek(1);
+document.getElementById('todayBtn').onclick = ()=> { weekOffset=0; renderWeek(); };
+document.getElementById('autoBtn').onclick = autoRepartition;
+
+document.getElementById('statsBtn').onclick = ()=> { document.getElementById('statsPanel').classList.toggle('open'); renderStatsIfOpen(); };
+document.getElementById('settingsBtn').onclick = ()=> document.getElementById('settingsPanel').classList.toggle('open');
+document.getElementById('themeToggle').onclick = toggleTheme;
+
+document.getElementById('autoChk').onchange = (e)=> setAuto(e.target.checked);
+document.getElementById('targetInput').onchange = e => { TARGET = +e.target.value; localStorage.setItem(TARGET_KEY, TARGET); renderWeek(); };
+document.getElementById('maxInput').onchange = e => { MAX = +e.target.value; localStorage.setItem(MAX_KEY, MAX); renderWeek(); };
+
+document.getElementById('addBtn').onclick = addTask;
+document.getElementById('editSel').onchange = fillEdit;
+document.getElementById('saveEdit').onclick = saveEdit;
+document.getElementById('delBtn').onclick = delTask;
+
+// Modal validation
+document.getElementById('whoYonice').onclick = ()=> validate('yonice');
+document.getElementById('whoMarine').onclick = ()=> validate('marine');
+document.getElementById('modal').addEventListener('click',e=>{ if(e.target.id==='modal') e.currentTarget.style.display='none'; });
+
+// Absence panel
+document.getElementById('absenceBtn').onclick = ()=>{
+  const p = document.getElementById('absencePanel');
+  const show = (p.style.display==='none' || !p.style.display);
+  p.style.display = show ? 'block' : 'none';
+  if(show) renderMonth();
+};
+document.getElementById('closeAbs').onclick = ()=> document.getElementById('absencePanel').style.display='none';
+document.getElementById('prevM').onclick = ()=> { monthCursor.setMonth(monthCursor.getMonth()-1); renderMonth(); };
+document.getElementById('nextM').onclick = ()=> { monthCursor.setMonth(monthCursor.getMonth()+1); renderMonth(); };
+
+/* Swipe (week only) */
+let startX=null;
+document.querySelector('.week-wrap').addEventListener('touchstart',e=>{ startX = e.changedTouches[0].clientX; },{passive:true});
+document.querySelector('.week-wrap').addEventListener('touchend',e=>{
+  if(startX==null) return;
+  const dx = e.changedTouches[0].clientX - startX;
+  if(dx < -50) slideWeek(1);
+  if(dx > 50) slideWeek(-1);
+  startX = null;
+},{passive:true});
+
+/* Init */
+(function init(){
+  applyStoredTheme();
+  // Prefs
+  const pref = localStorage.getItem(AUTO_KEY)==='1';
+  document.getElementById('autoChk').checked = pref;
+
+  // Inject stored target/max
+  document.getElementById('targetInput').value = TARGET;
+  document.getElementById('maxInput').value = MAX;
+
+  refreshSelects();
+  renderWeek();
+  renderGrid();
+  // Abs panel hidden by default; month render on open
+})();
+</script>
 </body>
 </html>
