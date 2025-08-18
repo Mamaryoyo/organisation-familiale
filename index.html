@@ -109,6 +109,8 @@
   @media (max-width:980px){ .left{min-width:0} .right{min-width:0} .tasks{grid-template-columns:repeat(2,1fr)} }
   @media (max-width:720px){ .app{flex-direction:column} .tasks{grid-template-columns:1fr} }
 </style>
+<!-- Google API (gapi) -->
+<script src="https://apis.google.com/js/api.js?onload=gapiInit" async defer></script>
 </head>
 <body>
   <div class="app">
@@ -245,6 +247,14 @@ const AUTO_KEY='auto_balance_v1';
 const TARGET_KEY='target_minutes';
 const MAX_KEY='max_minutes';
 
+/* ========= Config Calendars ========= */
+const CALENDARS = [
+  { id: "moissonnieryonice@gmail.com", color: "#2563eb" },  // Bleu = Yonice
+  { id: "marine.penon38@gmail.com",    color: "#facc15" },  // Jaune = Marine
+  { id: "marineetyonice@gmail.com",    color: "#9b59b6" }   // Violet = Commun
+];
+
+
 /* ========= Data ========= */
 const DEFAULT_TASKS = [
   {id:1, name:"Aspirateur RDC", duration:30, freqDays:7, nextDue:todayISO(), history:[]},
@@ -285,8 +295,75 @@ let weekOffset = 0;
 let monthCursor = new Date(); monthCursor.setDate(1);
 let modalTaskId = null;
 
+/* ========= Google Calendar: fetch des événements ========= */
+async function loadCalendarEvents(startISO, endISO) {
+  // Prépare un seau par jour de la semaine (YYYY-MM-DD)
+  const eventsByDay = {};
+  for (let i=0; i<7; i++) {
+    const d = addDays(startISO, i);
+    eventsByDay[d] = [];
+  }
+
+  // Si gapi n'est pas prêt / pas connecté, renvoie vide
+  if (typeof gapi === 'undefined' || !gapi.client || !gapi.client.calendar) {
+    return eventsByDay;
+  }
+
+  // Pour chaque agenda, on récupère les événements de la semaine
+  for (const cal of CALENDARS) {
+    try {
+      const resp = await gapi.client.calendar.events.list({
+        calendarId: cal.id,
+        timeMin: new Date(startISO).toISOString(),
+        timeMax: new Date(addDays(endISO,1)).toISOString(), // +1 jour pour couvrir toute la journée de fin
+        showDeleted: false,
+        singleEvents: true,
+        orderBy: 'startTime',
+        maxResults: 100
+      });
+      const items = resp.result.items || [];
+      items.forEach(ev => {
+        // Date "journée entière" ou dateTime
+        const date = (ev.start && (ev.start.date || (ev.start.dateTime || '').slice(0,10))) || null;
+        if (!date || !eventsByDay[date]) return;
+
+        const title = ev.summary || 'Sans titre';
+        let timeLabel = '';
+        if (ev.start && ev.start.dateTime) {
+          const start = new Date(ev.start.dateTime);
+          const end   = new Date(ev.end?.dateTime || ev.start.dateTime);
+          const f = (d)=> d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+          timeLabel = `${f(start)}–${f(end)}`;
+        } else {
+          timeLabel = 'Toute la journée';
+        }
+
+        eventsByDay[date].push({
+          title,
+          time: timeLabel,
+          color: cal.color
+        });
+      });
+    } catch (e) {
+      console.error('Erreur API Calendar pour', cal.id, e);
+      // On continue avec les autres agendas
+    }
+  }
+
+  // Trie chaque jour par heure de début (les "toute la journée" en haut)
+  Object.keys(eventsByDay).forEach(d=>{
+    eventsByDay[d].sort((a,b)=>{
+      if (a.time==='Toute la journée' && b.time!=='Toute la journée') return -1;
+      if (b.time==='Toute la journée' && a.time!=='Toute la journée') return 1;
+      return a.time.localeCompare(b.time);
+    });
+  });
+
+  return eventsByDay;
+}
+
 /* ========= Rendu semaine ========= */
-function renderWeek(){
+async function renderWeek(){
   const weekView = document.getElementById('weekView');
   weekView.innerHTML = '';
   const mondayISO = mondayOf(weekOffset);
@@ -295,6 +372,9 @@ function renderWeek(){
 
   document.getElementById('weekTitle').textContent = `Semaine n°${getWeekNumber(monday)}`;
   document.getElementById('weekSub').textContent = `du ${new Date(mondayISO).toLocaleDateString('fr-FR')} au ${new Date(sundayISO).toLocaleDateString('fr-FR')}`;
+
+  // 👉 Récupère les événements Google pour la semaine
+  const calendarEvents = await loadCalendarEvents(mondayISO, sundayISO);
 
   for(let i=0;i<7;i++){
     const dISO = fmtISO(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()+i));
@@ -309,6 +389,7 @@ function renderWeek(){
       <div class="date">${frDate(dISO)}</div>`;
     day.appendChild(head);
 
+    // — tâches planifiées ce jour —
     let load=0;
     tasks.forEach(t=>{
       if(t.nextDue===dISO){
@@ -321,6 +402,16 @@ function renderWeek(){
       }
     });
 
+    // — événements Google Calendar (après les tâches, avant le pied) —
+    (calendarEvents[dISO] || []).forEach(ev=>{
+      const pill = document.createElement('div');
+      pill.className = 'pill';
+      pill.style.borderLeft = `6px solid ${ev.color}`;
+      pill.innerHTML = `<span>📅 ${ev.title}</span><span class="badge">${ev.time}</span>`;
+      day.appendChild(pill);
+    });
+
+    // — pied : charge totale + barre —
     const foot = document.createElement('div'); foot.className='day-foot';
     const chip = document.createElement('div'); chip.className='load-chip'; chip.textContent = load? `${load} min` : '—';
     const bar=document.createElement('div'); bar.className='load-bar';
@@ -335,6 +426,7 @@ function renderWeek(){
     weekView.appendChild(day);
   }
 }
+
 
 /* ========= Rendu 3x3 ========= */
 function renderGrid(){
@@ -637,6 +729,33 @@ document.querySelector('.week-wrap').addEventListener('touchend',e=>{
   renderGrid();
   // Abs panel hidden by default; month render on open
 })();
+/* ========= Google API Auth ========= */
+/* Appelée automatiquement grâce à ?onload=gapiInit dans le <head> */
+function gapiInit() {
+  if (typeof gapi === 'undefined') return; // safety
+  gapi.load('client:auth2', async ()=>{
+    try {
+      await gapi.client.init({
+        clientId: "691551955911-i6mhvllgop4f1u5q2k144tmqvt6q2pei.apps.googleusercontent.com",
+        discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
+        scope: "https://www.googleapis.com/auth/calendar.readonly"
+      });
+
+      // Tente une connexion (popup) au chargement.
+      // Si tu préfères un bouton, on peut l’ajouter, mais pour l’instant c’est auto.
+      const auth = gapi.auth2.getAuthInstance();
+      if (!auth.isSignedIn.get()) {
+        await auth.signIn(); // popup
+      }
+
+      // Une fois connecté, re-render pour injecter les événements
+      renderWeek();
+    } catch (e) {
+      console.warn('OAuth non initialisé (mode non connecté ou test users manquant). La vue semaine s’affiche sans événements.', e);
+    }
+  });
+}
+
 </script>
 </body>
 </html>
