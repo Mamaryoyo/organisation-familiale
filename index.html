@@ -111,6 +111,8 @@
 </style>
 <!-- Google API (gapi) -->
 <script src="https://apis.google.com/js/api.js?onload=gapiInit" async defer></script>
+<script src="https://apis.google.com/js/api.js"></script>
+
 </head>
 <body>
   <div class="app">
@@ -224,6 +226,46 @@
   </div>
 
 <script>
+/* ========= GOOGLE CALENDAR CONFIG ========= */
+const CLIENT_ID = "691551955911-i6mhvllgop4f1u5q2k144tmqvt6q2pei.apps.googleusercontent.com";
+const API_KEY   = ""; // tu peux laisser vide si tu n’en as pas besoin
+const SCOPES    = "https://www.googleapis.com/auth/calendar.readonly";
+
+let GoogleAuth;
+let events = []; // événements récupérés
+
+function initClient() {
+  gapi.client.init({
+    apiKey: API_KEY,
+    clientId: CLIENT_ID,
+    discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
+    scope: SCOPES,
+  }).then(() => {
+    GoogleAuth = gapi.auth2.getAuthInstance();
+    if (!GoogleAuth.isSignedIn.get()) {
+      GoogleAuth.signIn();
+    } else {
+      listEvents();
+    }
+  });
+}
+
+function listEvents() {
+  gapi.client.calendar.events.list({
+    calendarId: "primary",   // Ton agenda principal
+    timeMin: new Date().toISOString(),
+    showDeleted: false,
+    singleEvents: true,
+    maxResults: 50,
+    orderBy: "startTime"
+  }).then(response => {
+    events = response.result.items || [];
+    renderWeek(); // après avoir les events on redessine
+  });
+}
+
+gapi.load("client:auth2", initClient);
+
 /* ========= Utils dates ========= */
 const fmtISO = d => { d=new Date(d); d.setHours(0,0,0,0); return d.toISOString().slice(0,10); };
 const todayISO = () => fmtISO(new Date());
@@ -239,523 +281,63 @@ function getWeekNumber(d){
 }
 const isWeekend = iso => { const wd = new Date(iso).getDay(); return wd===0 || wd===6; };
 
-/* ========= Storage keys ========= */
+/* ========= Tes données / tâches locales ========= */
 const TASKS_KEY='tasks_v5';
 const ABS_KEY='absences_v5';
-const PREF_THEME='theme_pref';
-const AUTO_KEY='auto_balance_v1';
-const TARGET_KEY='target_minutes';
-const MAX_KEY='max_minutes';
-
-/* ========= Config Calendars ========= */
-const CALENDARS = [
-  { id: "moissonnieryonice@gmail.com", color: "#2563eb" },  // Bleu = Yonice
-  { id: "marine.penon38@gmail.com",    color: "#facc15" },  // Jaune = Marine
-  { id: "marineetyonice@gmail.com",    color: "#9b59b6" }   // Violet = Commun
-];
-
-
-/* ========= Data ========= */
-const DEFAULT_TASKS = [
-  {id:1, name:"Aspirateur RDC", duration:30, freqDays:7, nextDue:todayISO(), history:[]},
-  {id:2, name:"Aspirateur étage", duration:30, freqDays:7, nextDue:addDays(todayISO(),1), history:[]},
-  {id:3, name:"Serpillière RDC", duration:20, freqDays:14, nextDue:addDays(todayISO(),2), history:[]},
-  {id:4, name:"Serpillière étage", duration:20, freqDays:14, nextDue:addDays(todayISO(),3), history:[]},
-  {id:5, name:"Poussières meubles", duration:25, freqDays:14, nextDue:addDays(todayISO(),4), history:[]},
-  {id:6, name:"Vitres", duration:40, freqDays:30, nextDue:addDays(todayISO(),7), history:[]},
-  {id:7, name:"Changer draps", duration:20, freqDays:7, nextDue:addDays(todayISO(),5), history:[]},
-  {id:8, name:"Laver draps", duration:60, freqDays:7, nextDue:addDays(todayISO(),5), history:[]},
-  {id:9, name:"Plier linge", duration:30, freqDays:3, nextDue:addDays(todayISO(),1), history:[]},
-  {id:10, name:"Machine linge", duration:10, freqDays:2, nextDue:todayISO(), history:[]},
-  {id:11, name:"Nettoyer salle de bain", duration:30, freqDays:7, nextDue:addDays(todayISO(),6), history:[]},
-  {id:12, name:"Nettoyer WC", duration:15, freqDays:7, nextDue:addDays(todayISO(),6), history:[]},
-  {id:13, name:"Cuisine plan travail", duration:15, freqDays:2, nextDue:todayISO(), history:[]},
-  {id:14, name:"Cuisine four", duration:25, freqDays:30, nextDue:addDays(todayISO(),10), history:[]},
-  {id:15, name:"Frigo", duration:20, freqDays:14, nextDue:addDays(todayISO(),3), history:[]},
-  {id:16, name:"Courses alimentaires", duration:90, freqDays:7, nextDue:addDays(todayISO(),2), history:[]},
-  {id:17, name:"Batchcooking", duration:180, freqDays:7, nextDue:addDays(todayISO(),2), history:[]},
-  {id:18, name:"Sortir poubelles", duration:10, freqDays:7, nextDue:todayISO(), history:[]},
-  {id:19, name:"Sortir tri sélectif", duration:10, freqDays:14, nextDue:addDays(todayISO(),4), history:[]},
-  {id:20, name:"Arroser plantes", duration:10, freqDays:3, nextDue:addDays(todayISO(),1), history:[]},
-  {id:21, name:"Tondre pelouse", duration:60, freqDays:14, nextDue:addDays(todayISO(),6), history:[]},
-  {id:22, name:"Taille haie", duration:120, freqDays:90, nextDue:addDays(todayISO(),20), history:[]},
-  {id:23, name:"Mauvaises herbes", duration:45, freqDays:30, nextDue:addDays(todayISO(),7), history:[]}
-];
-
-let tasks = JSON.parse(localStorage.getItem(TASKS_KEY) || 'null') || DEFAULT_TASKS;
-let absences = JSON.parse(localStorage.getItem(ABS_KEY) || '[]'); // ISO dates
-let TARGET = +(localStorage.getItem(TARGET_KEY) || 75);
-let MAX = +(localStorage.getItem(MAX_KEY) || 90);
-
-const saveTasks = () => localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
-const saveAbs   = () => localStorage.setItem(ABS_KEY, JSON.stringify(absences));
-
-/* ========= State ========= */
-let weekOffset = 0;
-let monthCursor = new Date(); monthCursor.setDate(1);
-let modalTaskId = null;
-
-/* ========= Google Calendar: fetch des événements ========= */
-async function loadCalendarEvents(startISO, endISO) {
-  // Prépare un seau par jour de la semaine (YYYY-MM-DD)
-  const eventsByDay = {};
-  for (let i=0; i<7; i++) {
-    const d = addDays(startISO, i);
-    eventsByDay[d] = [];
-  }
-
-  // Si gapi n'est pas prêt / pas connecté, renvoie vide
-  if (typeof gapi === 'undefined' || !gapi.client || !gapi.client.calendar) {
-    return eventsByDay;
-  }
-
-  // Pour chaque agenda, on récupère les événements de la semaine
-  for (const cal of CALENDARS) {
-    try {
-      const resp = await gapi.client.calendar.events.list({
-        calendarId: cal.id,
-        timeMin: new Date(startISO).toISOString(),
-        timeMax: new Date(addDays(endISO,1)).toISOString(), // +1 jour pour couvrir toute la journée de fin
-        showDeleted: false,
-        singleEvents: true,
-        orderBy: 'startTime',
-        maxResults: 100
-      });
-      const items = resp.result.items || [];
-      items.forEach(ev => {
-        // Date "journée entière" ou dateTime
-        const date = (ev.start && (ev.start.date || (ev.start.dateTime || '').slice(0,10))) || null;
-        if (!date || !eventsByDay[date]) return;
-
-        const title = ev.summary || 'Sans titre';
-        let timeLabel = '';
-        if (ev.start && ev.start.dateTime) {
-          const start = new Date(ev.start.dateTime);
-          const end   = new Date(ev.end?.dateTime || ev.start.dateTime);
-          const f = (d)=> d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
-          timeLabel = `${f(start)}–${f(end)}`;
-        } else {
-          timeLabel = 'Toute la journée';
-        }
-
-        eventsByDay[date].push({
-          title,
-          time: timeLabel,
-          color: cal.color
-        });
-      });
-    } catch (e) {
-      console.error('Erreur API Calendar pour', cal.id, e);
-      // On continue avec les autres agendas
-    }
-  }
-
-  // Trie chaque jour par heure de début (les "toute la journée" en haut)
-  Object.keys(eventsByDay).forEach(d=>{
-    eventsByDay[d].sort((a,b)=>{
-      if (a.time==='Toute la journée' && b.time!=='Toute la journée') return -1;
-      if (b.time==='Toute la journée' && a.time!=='Toute la journée') return 1;
-      return a.time.localeCompare(b.time);
-    });
-  });
-
-  return eventsByDay;
-}
+let tasks = JSON.parse(localStorage.getItem(TASKS_KEY) || '[]');
+let absences = JSON.parse(localStorage.getItem(ABS_KEY) || '[]'); 
 
 /* ========= Rendu semaine ========= */
-async function renderWeek(){
+function renderWeek(){
   const weekView = document.getElementById('weekView');
   weekView.innerHTML = '';
-  const mondayISO = mondayOf(weekOffset);
+  const mondayISO = mondayOf(0);
   const monday = new Date(mondayISO);
-  const sundayISO = fmtISO(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()+6));
-
-  document.getElementById('weekTitle').textContent = `Semaine n°${getWeekNumber(monday)}`;
-  document.getElementById('weekSub').textContent = `du ${new Date(mondayISO).toLocaleDateString('fr-FR')} au ${new Date(sundayISO).toLocaleDateString('fr-FR')}`;
-
-  // 👉 Récupère les événements Google pour la semaine
-  const calendarEvents = await loadCalendarEvents(mondayISO, sundayISO);
 
   for(let i=0;i<7;i++){
     const dISO = fmtISO(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()+i));
     const day = document.createElement('div');
-    day.className = 'day' + (absences.includes(dISO) ? ' absent' : '');
+    day.className = 'day';
 
     const head = document.createElement('div');
     head.className = 'day-head';
-    const isToday = (dISO===todayISO());
-    head.innerHTML = `
-      <div class="weekday ${isToday?'today-ring':''}">${frDay(dISO)}</div>
-      <div class="date">${frDate(dISO)}</div>`;
+    head.innerHTML = `<div class="weekday">${frDay(dISO)}</div>
+                      <div class="date">${frDate(dISO)}</div>`;
     day.appendChild(head);
 
-    // — tâches planifiées ce jour —
-    let load=0;
+    // === Tâches locales ===
     tasks.forEach(t=>{
       if(t.nextDue===dISO){
-        load += (t.duration||0);
         const pill = document.createElement('div');
-        pill.className = 'pill ' + (t.owner || '');
-        pill.title = t.history?.length ? `Dernière fois: ${t.history[t.history.length-1].who} • ${new Date(t.history[t.history.length-1].date).toLocaleDateString('fr-FR')}` : 'Aucun historique';
+        pill.className = 'pill';
         pill.innerHTML = `<span>${t.name}</span><span class="badge">${t.duration}m</span>`;
         day.appendChild(pill);
       }
     });
 
-    // — événements Google Calendar (après les tâches, avant le pied) —
-    (calendarEvents[dISO] || []).forEach(ev=>{
-      const pill = document.createElement('div');
-      pill.className = 'pill';
-      pill.style.borderLeft = `6px solid ${ev.color}`;
-      pill.innerHTML = `<span>📅 ${ev.title}</span><span class="badge">${ev.time}</span>`;
-      day.appendChild(pill);
+    // === Events Google Calendar ===
+    events.forEach(ev=>{
+      let start = ev.start.date || ev.start.dateTime;
+      if(start){
+        const evISO = fmtISO(start);
+        if(evISO === dISO){
+          const pill = document.createElement('div');
+          pill.className = 'pill marine'; // couleur Marine par ex
+          pill.innerHTML = `<span>${ev.summary}</span>`;
+          day.appendChild(pill);
+        }
+      }
     });
-
-    // — pied : charge totale + barre —
-    const foot = document.createElement('div'); foot.className='day-foot';
-    const chip = document.createElement('div'); chip.className='load-chip'; chip.textContent = load? `${load} min` : '—';
-    const bar=document.createElement('div'); bar.className='load-bar';
-    const fill=document.createElement('div'); fill.className='load-fill';
-    if(load<=TARGET) fill.style.background='var(--green)';
-    else if(load<=MAX) fill.style.background='var(--orange)';
-    else fill.style.background='var(--red)';
-    fill.style.width=Math.min(100, (MAX>0? (load/MAX*100):0))+'%';
-    bar.appendChild(fill);
-    foot.appendChild(chip); foot.appendChild(bar); day.appendChild(foot);
 
     weekView.appendChild(day);
   }
 }
 
-
-/* ========= Rendu 3x3 ========= */
-function renderGrid(){
-  const grid = document.getElementById('tasksGrid');
-  grid.innerHTML = '';
-  const now = new Date();
-  const sorted = tasks.map(t=>({ ...t, diff: Math.floor((new Date(t.nextDue)-now)/(1000*60*60*24)) }))
-                      .sort((a,b)=> a.diff - b.diff || a.duration - b.duration)
-                      .slice(0,9);
-  sorted.forEach(t=>{
-    const card = document.createElement('div');
-    card.className = 'card ' + (t.diff<=0?'late':'upcoming');
-    card.innerHTML = `<p class="name">${t.name}</p><p class="meta">${t.duration} min • ${t.freqDays} j</p><div class="days">${t.diff}</div>`;
-    card.onclick = ()=> openModal(t.id);
-    grid.appendChild(card);
-  });
-}
-
-/* ========= Modale validation ========= */
-function openModal(id){
-  modalTaskId = id;
-  const t = tasks.find(x=>x.id===id);
-  document.getElementById('modalTaskName').textContent = `Qui a fait « ${t.name} » ?`;
-  document.getElementById('modal').style.display = 'flex';
-}
-function validate(who){
-  const t = tasks.find(x=>x.id===modalTaskId);
-  if(!t) return;
-  t.owner = who;
-  t.history = t.history || [];
-  t.history.push({ who, date: todayISO() });
-  // Replanifie et saute les absences
-  let nd = addDays(t.nextDue, t.freqDays);
-  let guard=0;
-  while(absences.includes(nd) && guard<370){ nd = addDays(nd,1); guard++; }
-  t.nextDue = nd;
-  saveTasks();
-  document.getElementById('modal').style.display = 'none';
-  if(isAuto()) autoRepartition(); // auto si activé
-  renderWeek(); renderGrid(); renderStatsIfOpen();
-}
-
-/* ========= Mini-month (absences) ========= */
-function renderMonth(){
-  const title = document.getElementById('monthTitle');
-  title.textContent = monthCursor.toLocaleDateString('fr-FR',{month:'long', year:'numeric'});
-  const grid = document.getElementById('monthGrid'); grid.innerHTML='';
-  const y = monthCursor.getFullYear(), m = monthCursor.getMonth();
-  const first = new Date(y,m,1), last = new Date(y,m+1,0);
-  let start = first.getDay(); if(start===0) start=7; // Lundi=1
-  for(let i=1;i<start;i++){ const v=document.createElement('div'); grid.appendChild(v); }
-  for(let d=1; d<=last.getDate(); d++){
-    const iso = fmtISO(new Date(y,m,d));
-    const c = document.createElement('div');
-    const wknd = isWeekend(iso);
-    c.className = 'cell' + (wknd?' wknd':'') + (absences.includes(iso)?' abs':'') + (iso===todayISO()?' today':'');
-    c.textContent = d;
-    c.title = absences.includes(iso) ? 'Absent (cliquer pour retirer)' : (wknd ? 'Week-end (cliquer pour marquer absent)' : 'Marquer absent');
-    c.onclick = ()=> toggleAbsenceSafe(iso);
-    grid.appendChild(c);
-  }
-}
-function toggleAbsenceSafe(iso){
-  try{
-    const has = absences.includes(iso);
-    if(has){
-      absences = absences.filter(x=>x!==iso);
-    }else{
-      absences.push(iso);
-      // repousse les tâches pile ce jour vers prochain jour libre
-      tasks.forEach(t=>{
-        if(t.nextDue===iso){
-          let nd = addDays(iso,1), guard=0;
-          while(absences.includes(nd) && guard<370){ nd = addDays(nd,1); guard++; }
-          t.nextDue = nd;
-        }
-      });
-      saveTasks();
-    }
-    absences = Array.from(new Set(absences));
-    saveAbs();
-    if(isAuto()) autoRepartition();
-    renderMonth(); renderWeek(); renderGrid(); renderStatsIfOpen();
-  }catch(err){
-    console.error(err);
-    alert("Oups, une erreur est survenue lors du marquage d'absence.");
-  }
-}
-
-/* ========= Auto-répartition ========= */
-function isAuto(){ return localStorage.getItem(AUTO_KEY)==='1' || document.getElementById('autoChk').checked; }
-function setAuto(v){ localStorage.setItem(AUTO_KEY, v?'1':'0'); document.getElementById('autoChk').checked = v; }
-function autoRepartition(){
-  const mondayISO = mondayOf(weekOffset);
-  const monday = new Date(mondayISO);
-  const weekDays = Array.from({length:7},(_,i)=> fmtISO(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()+i)));
-  const load = {};
-  weekDays.forEach(d=> load[d] = { minutes:0, tasks:[] });
-
-  // Construire charge de la semaine courante
-  tasks.forEach(t=>{
-    if(load[t.nextDue]){ load[t.nextDue].minutes += t.duration; load[t.nextDue].tasks.push(t); }
-  });
-
-  // Pour chaque jour au-dessus du MAX, déplacer des tâches vers des jours <= TARGET
-  for(const iso of weekDays){
-    let safety=0;
-    while(load[iso].minutes > MAX && safety<100){
-      safety++;
-      // tâche déplaçable = la plus "légère" d'abord
-      const movable = load[iso].tasks.sort((a,b)=>a.duration-b.duration)[0];
-      if(!movable) break;
-
-      // chercher destination dans la même semaine, plus tard uniquement
-      let dest = null;
-      for(const cand of weekDays){
-        if(cand<=iso) continue;                    // pas avant
-        if(absences.includes(cand)) continue;      // pas sur absence
-        if(load[cand].minutes + movable.duration <= TARGET){ dest = cand; break; }
-      }
-      // si aucune destination <= TARGET, tenter la moins chargée non absente et > iso
-      if(!dest){
-        const candidates = weekDays.filter(d=> d>iso && !absences.includes(d));
-        if(candidates.length){
-          dest = candidates.sort((a,b)=> load[a].minutes - load[b].minutes)[0];
-        }
-      }
-      if(!dest) break; // rien à faire
-
-      // appliquer déplacement
-      movable.nextDue = dest;
-      // maj structures
-      load[iso].minutes -= movable.duration;
-      load[iso].tasks = load[iso].tasks.filter(t=>t.id!==movable.id);
-      load[dest].minutes += movable.duration;
-      load[dest].tasks.push(movable);
-    }
-  }
-
-  saveTasks();
-  renderWeek(); renderGrid(); renderStatsIfOpen();
-}
-
-/* ========= Stats ========= */
-let pie, bars;
-function renderStats(){
-  const filter = document.getElementById('statsFilter').value;
-  let hist = tasks.flatMap(t=>t.history||[]);
-  const now = new Date();
-  if(filter==='month'){
-    hist = hist.filter(h=> { const d=new Date(h.date); return d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear(); });
-  }else{
-    hist = hist.filter(h=> new Date(h.date).getFullYear()===now.getFullYear());
-  }
-  const counts = { yonice:0, marine:0 };
-  hist.forEach(h=> counts[h.who] = (counts[h.who]||0)+1 );
-  const status = { on:0, late:0 };
-  tasks.forEach(t=> (new Date(t.nextDue) < now ? status.late++ : status.on++ ));
-
-  const textColor = getComputedStyle(document.body).getPropertyValue('--text').trim();
-  if(pie) pie.destroy();
-  pie = new Chart(document.getElementById('pie'), {
-    type:'pie',
-    data:{ labels:['Yonice','Marine'], datasets:[{ data:[counts.yonice,counts.marine], backgroundColor:['#2563eb','#facc15'] }] },
-    options:{ plugins:{ legend:{ labels:{ color:textColor } } } }
-  });
-  if(bars) bars.destroy();
-  bars = new Chart(document.getElementById('bars'), {
-    type:'bar',
-    data:{ labels:['À temps','En retard'], datasets:[{ data:[status.on,status.late], backgroundColor:['#22c55e','#ef4444'] }] },
-    options:{ scales:{ x:{ ticks:{ color:textColor } }, y:{ beginAtZero:true, ticks:{ color:textColor } } }, plugins:{ legend:{ display:false } } }
-  });
-}
-function renderStatsIfOpen(){
-  if(document.getElementById('statsPanel').classList.contains('open')) renderStats();
-}
-
-/* ========= Settings ========= */
-function refreshSelects(){
-  const editSel = document.getElementById('editSel');
-  const delSel = document.getElementById('delSel');
-  editSel.innerHTML = ''; delSel.innerHTML = '';
-  tasks.forEach(t=>{
-    const o1=document.createElement('option'); o1.value=t.id; o1.textContent=t.name; editSel.appendChild(o1);
-    const o2=document.createElement('option'); o2.value=t.id; o2.textContent=t.name; delSel.appendChild(o2);
-  });
-  fillEdit();
-}
-function fillEdit(){
-  const id = parseInt(document.getElementById('editSel').value);
-  const t = tasks.find(x=>x.id===id); if(!t) return;
-  document.getElementById('editName').value = t.name;
-  document.getElementById('editDur').value = t.duration;
-  document.getElementById('editFreq').value = t.freqDays;
-}
-function addTask(){
-  const name = document.getElementById('addName').value.trim();
-  const dur = parseInt(document.getElementById('addDur').value);
-  const freq = parseInt(document.getElementById('addFreq').value);
-  if(!name || !dur || !freq){ alert('Complète les champs'); return; }
-  const id = tasks.length ? Math.max(...tasks.map(t=>t.id))+1 : 1;
-  tasks.push({ id, name, duration:dur, freqDays:freq, nextDue:todayISO(), history:[] });
-  saveTasks(); refreshSelects(); renderWeek(); renderGrid();
-}
-function saveEdit(){
-  const id = parseInt(document.getElementById('editSel').value);
-  const t = tasks.find(x=>x.id===id); if(!t) return;
-  const newName = document.getElementById('editName').value.trim();
-  const newDur  = parseInt(document.getElementById('editDur').value);
-  const newFreq = parseInt(document.getElementById('editFreq').value);
-  if(newName) t.name = newName;
-  if(newDur)  t.duration = newDur;
-  if(newFreq) t.freqDays = newFreq;
-  saveTasks(); refreshSelects(); renderWeek(); renderGrid();
-}
-function delTask(){
-  const id = parseInt(document.getElementById('delSel').value);
-  const t = tasks.find(x=>x.id===id);
-  if(!t) return;
-  if(!confirm(`Supprimer la tâche « ${t.name} » ?`)) return;
-  tasks = tasks.filter(x=>x.id!==id);
-  saveTasks(); refreshSelects(); renderWeek(); renderGrid();
-}
-
-/* ========= Thème ========= */
-function applyStoredTheme(){ const t = localStorage.getItem(PREF_THEME); if(t==='dark') document.body.classList.add('dark'); }
-function toggleTheme(){ document.body.classList.toggle('dark'); localStorage.setItem(PREF_THEME, document.body.classList.contains('dark') ? 'dark' : 'light'); }
-
-/* ========= Week slide ========= */
-function slideWeek(dir){
-  const el = document.getElementById('weekView');
-  el.style.transition='none';
-  el.style.transform=`translateX(${dir>0? '100%':'-100%'})`;
-  void el.offsetWidth; // reflow
-  weekOffset += dir;
-  renderWeek();
-  el.style.transition='transform .35s ease';
-  el.style.transform='translateX(0)';
-}
-
-/* ========= Events ========= */
-document.getElementById('prevW').onclick = ()=> slideWeek(-1);
-document.getElementById('nextW').onclick = ()=> slideWeek(1);
-document.getElementById('todayBtn').onclick = ()=> { weekOffset=0; renderWeek(); };
-document.getElementById('autoBtn').onclick = autoRepartition;
-
-document.getElementById('statsBtn').onclick = ()=> { document.getElementById('statsPanel').classList.toggle('open'); renderStatsIfOpen(); };
-document.getElementById('settingsBtn').onclick = ()=> document.getElementById('settingsPanel').classList.toggle('open');
-document.getElementById('themeToggle').onclick = toggleTheme;
-
-document.getElementById('autoChk').onchange = (e)=> setAuto(e.target.checked);
-document.getElementById('targetInput').onchange = e => { TARGET = +e.target.value; localStorage.setItem(TARGET_KEY, TARGET); renderWeek(); };
-document.getElementById('maxInput').onchange = e => { MAX = +e.target.value; localStorage.setItem(MAX_KEY, MAX); renderWeek(); };
-
-document.getElementById('addBtn').onclick = addTask;
-document.getElementById('editSel').onchange = fillEdit;
-document.getElementById('saveEdit').onclick = saveEdit;
-document.getElementById('delBtn').onclick = delTask;
-
-// Modal validation
-document.getElementById('whoYonice').onclick = ()=> validate('yonice');
-document.getElementById('whoMarine').onclick = ()=> validate('marine');
-document.getElementById('modal').addEventListener('click',e=>{ if(e.target.id==='modal') e.currentTarget.style.display='none'; });
-
-// Absence panel
-document.getElementById('absenceBtn').onclick = ()=>{
-  const p = document.getElementById('absencePanel');
-  const show = (p.style.display==='none' || !p.style.display);
-  p.style.display = show ? 'block' : 'none';
-  if(show) renderMonth();
-};
-document.getElementById('closeAbs').onclick = ()=> document.getElementById('absencePanel').style.display='none';
-document.getElementById('prevM').onclick = ()=> { monthCursor.setMonth(monthCursor.getMonth()-1); renderMonth(); };
-document.getElementById('nextM').onclick = ()=> { monthCursor.setMonth(monthCursor.getMonth()+1); renderMonth(); };
-
-/* Swipe (week only) */
-let startX=null;
-document.querySelector('.week-wrap').addEventListener('touchstart',e=>{ startX = e.changedTouches[0].clientX; },{passive:true});
-document.querySelector('.week-wrap').addEventListener('touchend',e=>{
-  if(startX==null) return;
-  const dx = e.changedTouches[0].clientX - startX;
-  if(dx < -50) slideWeek(1);
-  if(dx > 50) slideWeek(-1);
-  startX = null;
-},{passive:true});
-
-/* Init */
+/* ========= Init ========= */
 (function init(){
-  applyStoredTheme();
-  // Prefs
-  const pref = localStorage.getItem(AUTO_KEY)==='1';
-  document.getElementById('autoChk').checked = pref;
-
-  // Inject stored target/max
-  document.getElementById('targetInput').value = TARGET;
-  document.getElementById('maxInput').value = MAX;
-
-  refreshSelects();
-  renderWeek();
-  renderGrid();
-  // Abs panel hidden by default; month render on open
+  renderWeek(); // affichage vide si pas encore connecté
 })();
-/* ========= Google API Auth ========= */
-/* Appelée automatiquement grâce à ?onload=gapiInit dans le <head> */
-function gapiInit() {
-  if (typeof gapi === 'undefined') return; // safety
-  gapi.load('client:auth2', async ()=>{
-    try {
-      await gapi.client.init({
-        clientId: "691551955911-i6mhvllgop4f1u5q2k144tmqvt6q2pei.apps.googleusercontent.com",
-        discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
-        scope: "https://www.googleapis.com/auth/calendar.readonly"
-      });
-
-      // Tente une connexion (popup) au chargement.
-      // Si tu préfères un bouton, on peut l’ajouter, mais pour l’instant c’est auto.
-      const auth = gapi.auth2.getAuthInstance();
-      if (!auth.isSignedIn.get()) {
-        await auth.signIn(); // popup
-      }
-
-      // Une fois connecté, re-render pour injecter les événements
-      renderWeek();
-    } catch (e) {
-      console.warn('OAuth non initialisé (mode non connecté ou test users manquant). La vue semaine s’affiche sans événements.', e);
-    }
-  });
-}
-
 </script>
+
 </body>
 </html>
