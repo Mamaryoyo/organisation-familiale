@@ -1,80 +1,390 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="fr">
 <head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-  <meta http-equiv="Content-Style-Type" content="text/css">
-  <title></title>
-  <meta name="Generator" content="Cocoa HTML Writer">
-  <meta name="CocoaVersion" content="2113.6">
-  <style type="text/css">
-    body {background-color: #f4f5f7}
-    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 18.0px '.SF NS'; color: #232323; -webkit-text-stroke: #232323}
-    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 13.0px 'Helvetica Neue'; color: #585e6d; -webkit-text-stroke: #585e6d; min-height: 16.0px}
-    p.p3 {margin: 0.0px 0.0px 0.0px 0.0px; text-align: center; font: 11.0px 'Helvetica Neue'; color: #232323; -webkit-text-stroke: #232323; background-color: #ffffff}
-    p.p4 {margin: 0.0px 0.0px 0.0px 0.0px; text-align: center; font: 11.0px '.Apple Color Emoji UI'; color: #232323; -webkit-text-stroke: #232323; background-color: #ffffff}
-    p.p5 {margin: 0.0px 0.0px 0.0px 0.0px; text-align: center; line-height: 18.0px; font: 18.0px '.Apple Color Emoji UI'; color: #232323; -webkit-text-stroke: #232323; background-color: #ffffff}
-    p.p6 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px 'Helvetica Neue'; color: #232323; -webkit-text-stroke: #232323; background-color: #ffffff; min-height: 15.0px}
-    p.p7 {margin: 0.0px 0.0px 0.0px 0.0px; font: 16.0px 'Helvetica Neue'; color: #232323; -webkit-text-stroke: #232323}
-    p.p8 {margin: 0.0px 0.0px 0.0px 0.0px; font: 13.0px 'Helvetica Neue'; color: #585e6d; -webkit-text-stroke: #585e6d}
-    p.p9 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px 'Helvetica Neue'; color: #232323; -webkit-text-stroke: #232323}
-    p.p10 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px 'Helvetica Neue'; color: #585e6d; -webkit-text-stroke: #585e6d}
-    p.p11 {margin: 0.0px 0.0px 6.0px 0.0px; font: 12.0px 'Helvetica Neue'; color: #232323; -webkit-text-stroke: #232323; min-height: 15.0px}
-    p.p12 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px 'Helvetica Neue'; color: #585e6d; -webkit-text-stroke: #585e6d; background-color: #ffffff}
-    p.p13 {margin: 0.0px 0.0px 0.0px 0.0px; font: 11.0px 'Helvetica Neue'; color: #232323; -webkit-text-stroke: #232323; background-color: #ffffff}
-    p.p14 {margin: 0.0px 0.0px 0.0px 0.0px; font: 11.0px Times; color: #232323; -webkit-text-stroke: #232323; background-color: #ffffff}
-    p.p15 {margin: 0.0px 0.0px 0.0px 0.0px; font: 11.0px 'Helvetica Neue'; color: #232323; -webkit-text-stroke: #232323; min-height: 13.0px}
-    span.s1 {font-kerning: none; background-color: #ffffff}
-    span.s2 {font-kerning: none}
-    span.s3 {font-kerning: none; color: #232323; background-color: #ffffff; -webkit-text-stroke: 0px #232323}
-    span.s4 {font: 12.0px '.Apple Color Emoji UI'; font-kerning: none; background-color: #ffffff}
-    span.s5 {font: 11.0px Times; font-kerning: none}
-    span.s6 {font: 11.0px 'Helvetica Neue'; font-kerning: none}
-    span.s7 {font: 12.0px 'Helvetica Neue'; font-kerning: none; background-color: #ffffff}
+  <meta charset="UTF-8">
+  <title>Organisation familiale</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f9f9f9;
+      color: #333;
+      display: flex;
+      height: 100vh;
+    }
+
+    /* Layout */
+    .container {
+      display: flex;
+      width: 100%;
+      height: 100%;
+    }
+
+    .planning {
+      flex: 2;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #ddd;
+      padding: 10px;
+    }
+
+    .tasks {
+      flex: 1;
+      padding: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      gap: 10px;
+      background: #fff;
+    }
+
+    /* Semaine */
+    .week {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+      flex: 1;
+    }
+
+    .day-col {
+      background: #fafafa;
+      border: 1px solid #eee;
+      border-radius: 6px;
+      padding: 6px;
+      font-size: 0.9em;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .day-header {
+      font-weight: bold;
+      margin-bottom: 4px;
+      font-size: 0.95em;
+    }
+
+    /* Events Google */
+    .event-google {
+      background: #cce5ff;
+      border-left: 4px solid #007bff;
+      border-radius: 6px;
+      padding: 4px 6px;
+      margin: 4px 0;
+      font-size: 0.85em;
+      color: #003366;
+    }
+    .event-google .ev-title {
+      font-weight: bold;
+    }
+    .event-google .ev-time {
+      font-size: 0.75em;
+      color: #555;
+    }
+
+    /* Tâches */
+    .task {
+      flex: 1 1 calc(33% - 10px);
+      min-width: 100px;
+      height: 100px;
+      background: #f0f0f0;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-size: 1em;
+      cursor: pointer;
+      transition: transform 0.2s ease, opacity 0.3s ease;
+    }
+    .task.red { background: #f8d7da; }
+    .task.gray { background: #e2e3e5; }
+    .task.done {
+      opacity: 0.3;
+      transform: scale(0.95);
+    }
+
+    /* Barre d’outils */
+    .toolbar {
+      display: flex;
+      justify-content: flex-start;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .toolbar button {
+      padding: 5px 10px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
-<p class="p1"><span class="s1"><b>Semaine</b></span></p>
-<p class="p2"><span class="s2"></span><br></p>
-<p class="p3"><span class="s2">‹</span></p>
-<p class="p3"><span class="s2">Aujourd’hui</span></p>
-<p class="p3"><span class="s2">›</span></p>
-<p class="p4"><span class="s2">↔️</span></p>
-<p class="p5"><span class="s2">💼</span></p>
-<p class="p5"><span class="s2">📈</span></p>
-<p class="p5"><span class="s2">⚙️</span></p>
-<p class="p6"><span class="s2"></span><br></p>
-<p class="p7"><span class="s1"><b>9 prochaines tâches</b></span></p>
-<p class="p8"><span class="s1">Appuie pour valider (popup Yonice / Marine)</span></p>
-<p class="p9"><span class="s1"><b>Paramètres</b></span></p>
-<p class="p3"><span class="s2">Basculer clair / sombre</span></p>
-<p class="p10"><span class="s1">Auto-répartir après chaque changement</span><span class="s3"><span class="Apple-converted-space"> </span></span></p>
-<p class="p11"><span class="s2"></span><br></p>
-<p class="p9"><span class="s4">⚙️</span><span class="s1"><b> Objectifs</b></span></p>
-<p class="p10"><span class="s1">Cible idéale (min)</span></p>
-<p class="p10"><span class="s1">Plafond max (min)</span></p>
-<p class="p11"><span class="s2"></span><br></p>
-<p class="p9"><span class="s4">➕</span><span class="s1"><b> Ajouter une tâche</b></span></p>
-<p class="p10"><span class="s1">Nom</span></p>
-<p class="p10"><span class="s1">Durée</span></p>
-<p class="p10"><span class="s1">Fréquence (jours)</span></p>
-<p class="p3"><span class="s2">Ajouter</span></p>
-<p class="p11"><span class="s2"></span><br></p>
-<p class="p9"><span class="s4">✏️</span><span class="s1"><b> Modifier une tâche</b></span></p>
-<p class="p10"><span class="s1">Choisir</span></p>
-<p class="p10"><span class="s1">Nom</span></p>
-<p class="p10"><span class="s1">Durée</span></p>
-<p class="p10"><span class="s1">Fréquence</span></p>
-<p class="p3"><span class="s2">Enregistrer</span></p>
-<p class="p11"><span class="s2"></span><br></p>
-<p class="p9"><span class="s4">🗑️</span><span class="s1"><b> Supprimer une tâche</b></span></p>
-<p class="p10"><span class="s1">Choisir</span></p>
-<p class="p3"><span class="s2">Supprimer</span></p>
-<p class="p9"><span class="s1"><b>Statistiques</b></span></p>
-<p class="p12"><span class="s2">Période</span></p>
-<p class="p13"><span class="s2"><span class="Apple-converted-space">          </span></span><span class="s5">Ce mois</span></p>
-<p class="p14"><span class="s6"><span class="Apple-converted-space">          </span></span><span class="s2">Cette année</span></p>
-<p class="p15"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7"><span class="Apple-converted-space"> </span></span></p>
-<p class="p6"><span class="s2"></span><br></p>
-<p class="p6"><span class="s2"></span><br></p>
+  <div class="container">
+    <!-- Colonne gauche : Planning -->
+    <div class="planning">
+      <div class="toolbar">
+        <button id="prevWeek">←</button>
+        <button id="todayBtn">Aujourd'hui</button>
+        <button id="nextWeek">→</button>
+        <button id="authBtn" style="display:none;" onclick="handleAuthClick()">Connexion Google</button>
+        <button id="signoutBtn" style="display:none;" onclick="handleSignoutClick()">Déconnexion</button>
+      </div>
+      <div class="week" id="weekView">
+        <!-- Colonnes des jours générées en JS -->
+      </div>
+    </div>
+
+    <!-- Colonne droite : 9 tâches -->
+    <div class="tasks" id="tasksView">
+      <!-- Tâches dynamiques -->
+    </div>
+  </div>
+
+<script>
+// =========================
+// Génération de la semaine
+// =========================
+const weekView = document.getElementById("weekView");
+
+// Obtenir le lundi d'une semaine donnée
+function getMonday(d) {
+  d = new Date(d);
+  const day = d.getDay();
+  const diff = d.getDate() - (day === 0 ? 6 : day - 1); // 0=dimanche → ramener à lundi
+  return new Date(d.setDate(diff));
+}
+
+let currentMonday = getMonday(new Date());
+
+// Rendu de la semaine
+function renderWeek() {
+  weekView.innerHTML = "";
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(currentMonday);
+    day.setDate(currentMonday.getDate() + i);
+
+    const col = document.createElement("div");
+    col.className = "day-col";
+    col.id = "col-" + day.toLocaleDateString("fr-FR", { weekday: "long" });
+
+    const header = document.createElement("div");
+    header.className = "day-header";
+    header.innerHTML = `${day.toLocaleDateString("fr-FR", { weekday: "long" })}<br>
+      <span style="font-weight:normal;font-size:0.85em;color:#666;">
+      ${day.getDate()} ${day.toLocaleDateString("fr-FR", { month: "long" })}
+      </span>`;
+
+    col.appendChild(header);
+    weekView.appendChild(col);
+  }
+}
+
+// Navigation entre semaines
+document.getElementById("prevWeek").addEventListener("click", () => {
+  currentMonday.setDate(currentMonday.getDate() - 7);
+  renderWeek();
+  if (gapi.client.getToken()) listUpcomingEvents();
+});
+document.getElementById("nextWeek").addEventListener("click", () => {
+  currentMonday.setDate(currentMonday.getDate() + 7);
+  renderWeek();
+  if (gapi.client.getToken()) listUpcomingEvents();
+});
+document.getElementById("todayBtn").addEventListener("click", () => {
+  currentMonday = getMonday(new Date());
+  renderWeek();
+  if (gapi.client.getToken()) listUpcomingEvents();
+});
+
+// Premier rendu
+renderWeek();
+</script>
+
+<script>
+// =========================
+// Gestion des tâches
+// =========================
+const tasksView = document.getElementById("tasksView");
+
+let tasks = [
+  { id: 1, name: "Vaisselle", dueIn: -1 },
+  { id: 2, name: "Courses", dueIn: 2 },
+  { id: 3, name: "Aspirateur", dueIn: 0 },
+  { id: 4, name: "Poubelles", dueIn: 1 },
+  { id: 5, name: "Lessive", dueIn: 3 },
+  { id: 6, name: "Cuisine", dueIn: -2 },
+  { id: 7, name: "Salle de bain", dueIn: 5 },
+  { id: 8, name: "Fenêtres", dueIn: 7 },
+  { id: 9, name: "Rangement", dueIn: 0 }
+];
+
+// Rendu
+function renderTasks() {
+  tasksView.innerHTML = "";
+  tasks.slice(0, 9).forEach(t => {
+    const div = document.createElement("div");
+    div.className = "task";
+    if (t.dueIn < 0) div.classList.add("red");
+    else if (t.dueIn > 0) div.classList.add("gray");
+
+    div.innerHTML = `
+      <strong>${t.name}</strong><br>
+      <span style="font-size:1.2em;">J${t.dueIn >= 0 ? "+"+t.dueIn : t.dueIn}</span>
+    `;
+
+    div.addEventListener("click", () => validateTask(t.id));
+    tasksView.appendChild(div);
+  });
+}
+
+// Validation popup
+function validateTask(taskId) {
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) return;
+
+  const choice = confirm(`Qui a fait la tâche "${task.name}" ?\n\nClique OK pour Yonice, Annuler pour Marine`);
+  const doneBy = choice ? "Yonice" : "Marine";
+
+  alert(`✅ ${task.name} validée par ${doneBy}`);
+  tasks = tasks.filter(t => t.id !== taskId);
+  renderTasks();
+}
+
+renderTasks();
+</script>
+
+<!-- Google API -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js"></script>
+
+<script>
+// =========================
+// Google API - Calendar
+// =========================
+const CLIENT_ID = "691551955911-i6mhvllgop4f1u5q2k144tmqvt6q2pei.apps.googleusercontent.com";
+const API_KEY = "";
+const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"];
+const SCOPES = "https://www.googleapis.com/auth/calendar.readonly";
+
+let tokenClient;
+let gapiInited = false;
+let gisInited = false;
+
+function gapiLoaded() {
+  gapi.load("client", initializeGapiClient);
+}
+async function initializeGapiClient() {
+  await gapi.client.init({ apiKey: API_KEY, discoveryDocs: DISCOVERY_DOCS });
+  gapiInited = true;
+  maybeEnableButtons();
+}
+function gisLoaded() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: "",
+  });
+  gisInited = true;
+  maybeEnableButtons();
+}
+function maybeEnableButtons() {
+  if (gapiInited && gisInited) {
+    document.getElementById("authBtn").style.display = "inline-block";
+  }
+}
+
+function handleAuthClick() {
+  tokenClient.callback = async (resp) => {
+    if (resp.error !== undefined) throw resp;
+    document.getElementById("authBtn").style.display = "none";
+    document.getElementById("signoutBtn").style.display = "inline-block";
+    await listUpcomingEvents();
+  };
+
+  if (gapi.client.getToken() === null) {
+    tokenClient.requestAccessToken({ prompt: "consent" });
+  } else {
+    tokenClient.requestAccessToken({ prompt: "" });
+  }
+}
+function handleSignoutClick() {
+  const token = gapi.client.getToken();
+  if (token !== null) {
+    google.accounts.oauth2.revoke(token.access_token);
+    gapi.client.setToken("");
+    document.getElementById("authBtn").style.display = "inline-block";
+    document.getElementById("signoutBtn").style.display = "none";
+    clearEvents();
+  }
+}
+
+async function listUpcomingEvents() {
+  let response;
+  try {
+    response = await gapi.client.calendar.events.list({
+      calendarId: "primary",
+      timeMin: currentMonday.toISOString(),
+      timeMax: new Date(currentMonday.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      showDeleted: false,
+      singleEvents: true,
+      maxResults: 50,
+      orderBy: "startTime"
+    });
+  } catch (err) {
+    console.error("Erreur API:", err.message);
+    return;
+  }
+
+  clearEvents();
+
+  const events = response.result.items;
+  if (!events || events.length === 0) {
+    console.log("📅 Aucun événement trouvé");
+    return;
+  }
+
+  events.forEach(event => {
+    const when = event.start.dateTime || event.start.date;
+    const day = new Date(when).getDay();
+
+    const dayMap = {
+      0: "dimanche",
+      1: "lundi",
+      2: "mardi",
+      3: "mercredi",
+      4: "jeudi",
+      5: "vendredi",
+      6: "samedi"
+    };
+
+    const colId = "col-" + dayMap[day];
+    const col = document.getElementById(colId);
+
+    if (col) {
+      const evDiv = document.createElement("div");
+      evDiv.className = "event-google";
+      evDiv.innerHTML = `
+        <span class="ev-title">📅 ${event.summary || "Sans titre"}</span><br>
+        <span class="ev-time">${when ? new Date(when).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : ""}</span>
+      `;
+      col.appendChild(evDiv);
+    }
+  });
+}
+
+function clearEvents() {
+  document.querySelectorAll(".event-google").forEach(el => el.remove());
+}
+</script>
+
+<script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+<script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+
+<!-- Debug (optionnel) -->
+<div id="eventsDebug" style="display:none; padding:10px; font-size:0.8em; color:#666;"></div>
+<script>
+function debugInfo(msg) {
+  document.getElementById("eventsDebug").style.display = "block";
+  document.getElementById("eventsDebug").innerText = msg;
+}
+</script>
+
 </body>
 </html>
