@@ -3,20 +3,14 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Organisation familiale — vMax (GIS + jauge + filtres Y/M) — Partie 1/2</title>
+<title>Organisation familiale — vMax (GIS + jauge + filtres Y/M) — Partie 1/3</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<!-- Chart.js (chargé async dans la partie 2) -->
+<!-- Chart.js (chargé async : protégé côté JS dans renderStats) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" async></script>
 <!-- Google Identity Services (auth) + gapi client (Calendar API) -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js" async defer></script>
 <style>
-  /*****************************************************************************************************************
-   * THEME & TOKENS
-   * ----------------------------------------------------------------------------------------------------------------
-   * Palette + tokens utilisés partout. Les variables sont sur :root et swap avec .dark.
-   * Ajout de variables pour états, fonds, etc.
-   *****************************************************************************************************************/
   :root{
     --bg:#f6f7f9; --panel:#ffffff; --text:#1f2937; --muted:#6b7280; --line:#e5e7eb;
     --blue:#2563eb; --yellow:#facc15; --green:#22c55e; --orange:#f59e0b; --red:#ef4444;
@@ -33,10 +27,6 @@
     --card:#2b2b31; --card-soft:#3a3a42; --shadow:0 1px 3px rgba(0,0,0,.35);
     --ring: 0 0 0 2px rgba(99,102,241,.45);
   }
-
-  /*****************************************************************************************************************
-   * BASE
-   *****************************************************************************************************************/
   *{box-sizing:border-box}
   html,body{height:100%}
   body{
@@ -45,21 +35,13 @@
     transition:background .3s,color .3s;
   }
   button{font:inherit}
-  button:focus{outline:none; box-shadow:var(--ring);} /* Ring accessible */
+  button:focus{outline:none; box-shadow:var(--ring);} 
   a{color:inherit; text-decoration:none}
-
-  /* Utilitaires */
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
   .visually-hidden{clip:rect(0 0 0 0);clip-path:inset(50%);height:1px;overflow:hidden;position:absolute;white-space:nowrap;width:1px}
-
-  /*****************************************************************************************************************
-   * LAYOUT
-   *****************************************************************************************************************/
   .app{display:flex; flex:1; width:100%; height:100%;}
   .left{flex:2; display:flex; flex-direction:column; border-right:1px solid var(--line); min-width:640px;}
   .right{flex:1; display:flex; flex-direction:column; min-width:360px;}
-
-  /* Top bar */
   .bar{display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5}
   .title{font-weight:600; font-size:18px}
   .sub{font-size:13px; color:var(--muted)}
@@ -69,10 +51,6 @@
   .btn:hover{filter:brightness(0.98)}
   .btn.active{box-shadow:0 0 0 2px rgba(37,99,235,.25) inset; font-weight:600}
   .icon{background:var(--panel); border:1px solid var(--line); padding:6px 10px; border-radius:8px; cursor:pointer; font-size:18px; line-height:1; box-shadow:var(--shadow); color:var(--text)}
-
-  /*****************************************************************************************************************
-   * WEEK VIEW — hauteur fixe + jauges par colonne
-   *****************************************************************************************************************/
   .week-wrap{flex:none; height:640px; overflow:auto; background:var(--panel)}
   .week-view{display:flex; gap:8px; padding:12px; transform:translateX(0); transition:transform .35s ease; height:100%}
   .day{flex:1; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; display:flex; flex-direction:column; align-items:stretch; box-shadow:var(--shadow); min-width:0; height:100%}
@@ -92,10 +70,6 @@
   .load-bar{height:8px; width:86%; border-radius:999px; background:var(--line); overflow:hidden; position:relative}
   .load-fill{height:100%; border-radius:999px; width:0}
   .tick{position:absolute; top:50%; transform:translateY(-50%); width:2px; height:8px; background:var(--muted); opacity:.35}
-
-  /*****************************************************************************************************************
-   * MONTH (absences) — repliable sous la semaine
-   *****************************************************************************************************************/
   .month{background:var(--panel); border-top:1px solid var(--line); padding:10px 12px; display:none}
   .month-top{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:6px}
   .month-title{font-weight:600; flex:1; text-align:center}
@@ -106,10 +80,6 @@
   .cell.today{box-shadow:0 0 0 2px var(--blue) inset; border-color:var(--blue); font-weight:700}
   .cell.wknd{background:var(--card-soft); color:var(--muted)}
   .cell.abs{background:var(--red); color:#fff; border-color:var(--red)}
-
-  /*****************************************************************************************************************
-   * RIGHT — 9 prochaines tâches
-   *****************************************************************************************************************/
   .right-head{padding:12px 14px; background:var(--panel); border-bottom:1px solid var(--line)}
   .tasks{flex:1; padding:12px; display:grid; grid-template-columns:repeat(3,1fr); gap:10px; overflow:auto}
   .card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; text-align:center; box-shadow:var(--shadow); cursor:pointer; transition:transform .12s ease, opacity .25s ease}
@@ -122,10 +92,6 @@
   body.dark .upcoming{background:var(--card)}
   .late{background:var(--red-soft); border-color:var(--red)}
   body.dark .late{background:var(--red-soft-dark); border-color:var(--red); color:#fca5a5}
-
-  /*****************************************************************************************************************
-   * MODAL (validation qui)
-   *****************************************************************************************************************/
   .modal{position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.45); backdrop-filter:blur(6px); z-index:20}
   .dialog{background:var(--panel); color:var(--text); padding:18px; border-radius:12px; width:min(420px,92vw); box-shadow:0 10px 30px rgba(0,0,0,.25)}
   .dialog h3{margin:0 0 12px 0; font-size:16px; font-weight:600; text-align:center}
@@ -133,10 +99,6 @@
   .wbtn{flex:1; padding:10px; border-radius:10px; border:none; cursor:pointer; font-weight:700}
   .wbtn.yonice{background:var(--blue); color:#fff}
   .wbtn.marine{background:var(--yellow); color:#333}
-
-  /*****************************************************************************************************************
-   * PANELS (paramètres & stats)
-   *****************************************************************************************************************/
   .panel{position:fixed; top:0; right:-460px; width:460px; height:100%; background:var(--panel); border-left:1px solid var(--line); box-shadow:-4px 0 12px rgba(0,0,0,.12); transition:right .28s ease; z-index:25; display:flex; flex-direction:column}
   .panel.open{right:0}
   .p-head{padding:14px; border-bottom:1px solid var(--line); font-weight:700}
@@ -147,26 +109,14 @@
   .row{display:flex; gap:8px}
   .row > *{flex:1}
   .chart{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; box-shadow:var(--shadow)}
-
-  /*****************************************************************************************************************
-   * RESPONSIVE + gestion panneau d'absences
-   *****************************************************************************************************************/
   @media (max-width:1200px){ .left{min-width:520px} }
   @media (max-width:980px){ .left{min-width:0} .right{min-width:0} .tasks{grid-template-columns:repeat(2,1fr)} }
   @media (max-width:720px){ .app{flex-direction:column} .tasks{grid-template-columns:1fr} }
-
-  /* Réduction automatique de la semaine quand le panneau d'absences est ouvert */
   .left.abs-open .week-wrap{height:360px}
   .left.abs-open .month{display:block}
-
-  /* Pastille Y/M (qui a fait en dernier) */
   .who-badge{display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; width:18px; height:18px; border-radius:999px; margin-left:auto; border:1px solid var(--line)}
   .who-badge.y{background:rgba(37,99,235,.12); color:#1e3a8a}
   .who-badge.m{background:rgba(250,204,21,.25); color:#854d0e}
-
-  /*****************************************************************************************************************
-   * Impression (optionnel)
-   *****************************************************************************************************************/
   @media print{
     body{background:#fff}
     .panel, .modal, .right-head, #settingsBtn, #statsBtn, #absenceBtn{display:none!important}
@@ -177,7 +127,6 @@
 </head>
 <body>
   <div class="app">
-    <!-- LEFT -->
     <div class="left">
       <div class="bar">
         <div class="bar-left">
@@ -189,7 +138,6 @@
           <button class="btn" id="todayBtn" title="Revenir à aujourd’hui" aria-label="Aujourd’hui">Aujourd’hui</button>
           <button class="btn" id="nextW" title="Semaine suivante" aria-label="Semaine suivante">›</button>
           <button class="btn" id="autoBtn" title="Répartir la semaine" aria-label="Répartition auto">↔️</button>
-          <!-- Filtres Y/M rapides -->
           <div class="who-filter" style="display:flex;gap:6px;margin-left:6px">
             <button class="btn" id="whoAll" title="Toutes les tâches">All</button>
             <button class="btn" id="whoY" title="Tâches de Yonice">Y</button>
@@ -200,12 +148,7 @@
           <button class="icon" id="settingsBtn" title="Paramètres" aria-label="Paramètres">⚙️</button>
         </div>
       </div>
-
-      <div class="week-wrap">
-        <div class="week-view" id="weekView"></div>
-      </div>
-
-      <!-- Panneau absences (repliable) -->
+      <div class="week-wrap"><div class="week-view" id="weekView"></div></div>
       <div class="month" id="absencePanel">
         <div class="month-top">
           <button class="btn" id="prevM" title="Mois précédent">‹</button>
@@ -217,8 +160,6 @@
         <div class="grid" id="monthGrid"></div>
       </div>
     </div>
-
-    <!-- RIGHT -->
     <div class="right">
       <div class="right-head">
         <div class="title" style="font-size:16px">9 prochaines tâches</div>
@@ -227,8 +168,6 @@
       <div class="tasks" id="tasksGrid"></div>
     </div>
   </div>
-
-  <!-- MODAL -->
   <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTaskName">
     <div class="dialog">
       <h3 id="modalTaskName">Qui a fait… ?</h3>
@@ -238,8 +177,6 @@
       </div>
     </div>
   </div>
-
-  <!-- SETTINGS -->
   <div class="panel" id="settingsPanel" aria-label="Panneau paramètres">
     <div class="p-head">Paramètres</div>
     <div class="p-body">
@@ -307,8 +244,6 @@
       </div>
     </div>
   </div>
-
-  <!-- STATS -->
   <div class="panel" id="statsPanel" aria-label="Panneau statistiques">
     <div class="p-head">Statistiques</div>
     <div class="p-body">
@@ -324,13 +259,11 @@
     </div>
   </div>
 
-  <!--
-    ==========================
-    =  SCRIPT — PARTIE 1/2  =
-    ==========================
-    NOTE: Cette partie contient toute la configuration, les utilitaires, l'état, et une portion des fonctions.
-    La partie 2/2 continue le script et referme la page HTML.
-  -->
+<!-- ==========================
+     =  SCRIPT — PARTIE 1/3  =
+     ==========================
+     Base + config + helpers + placeholders
+-->
 <script>
 /***************************************************
  * CONFIG — Google API (Calendar) via GIS
@@ -345,8 +278,10 @@ let events = []; // Google Calendar events
 window.addEventListener('load', () => {
   if (window.gapi){
     gapi.load('client', async () => {
-      await gapi.client.init({ discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"] });
-      gapiInited = true; maybeEnable();
+      try{
+        await gapi.client.init({ discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"] });
+        gapiInited = true; maybeEnable();
+      }catch(e){ console.warn('gapi init error', e); }
     });
   }
   const iv = setInterval(() => {
@@ -367,7 +302,12 @@ window.addEventListener('load', () => {
   }, 60);
 });
 
-function maybeEnable(){ if (gapiInited && gisInited){ tokenClient.requestAccessToken({ prompt:'consent' }); } }
+function maybeEnable(){
+  if (gapiInited && gisInited){
+    const haveToken = !!(gapi.client && gapi.client.getToken && gapi.client.getToken());
+    tokenClient.requestAccessToken({ prompt: haveToken ? 'none' : 'consent' });
+  }
+}
 
 async function listEvents(){
   try{
@@ -393,8 +333,8 @@ const LOGS_KEY='logs_v8';
 const PREF_KEY='prefs_v8';
 
 let tasks = JSON.parse(localStorage.getItem(TASKS_KEY) || '[]');
-let absences = JSON.parse(localStorage.getItem(ABS_KEY) || '[]'); // ["YYYY-MM-DD", ...]
-let logs = JSON.parse(localStorage.getItem(LOGS_KEY) || '[]'); // {date, taskId, who, duration}
+let absences = JSON.parse(localStorage.getItem(ABS_KEY) || '[]');
+let logs = JSON.parse(localStorage.getItem(LOGS_KEY) || '[]');
 let prefs = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
 
 function saveAll(){
@@ -405,7 +345,7 @@ function saveAll(){
 }
 
 /***************************************************
- * DATE UTILS (local + ISO jour)
+ * DATE UTILS
  ***************************************************/
 const pad = n => String(n).padStart(2,'0');
 const toISODateLocal = (d)=>{ const x = new Date(d); const y = new Date(x.getFullYear(), x.getMonth(), x.getDate()); return `${y.getFullYear()}-${pad(y.getMonth()+1)}-${pad(y.getDate())}`; };
@@ -443,7 +383,7 @@ function setWhoFilter(f){
 }
 
 /***************************************************
- * UI BUILDERS (pills, etc.)
+ * UI BUILDERS (pills)
  ***************************************************/
 function makePill(text, classes=[], badgeText, who){
   const d = document.createElement('div'); d.className = 'pill ' + classes.join(' ');
@@ -454,7 +394,7 @@ function makePill(text, classes=[], badgeText, who){
 }
 
 /***************************************************
- * ÉTAT DERNIER QUI (lastWhoMap) — construit depuis logs
+ * ÉTAT DERNIER QUI (lastWhoMap)
  ***************************************************/
 let lastWhoMap = new Map();
 function rebuildLastWhoMap(){
@@ -466,7 +406,7 @@ function rebuildLastWhoMap(){
 }
 
 /***************************************************
- * RENDER ALL — appele les sous-rendus
+ * RENDER ALL
  ***************************************************/
 function renderAll(){
   tasks.forEach(recomputeNextDue);
@@ -477,22 +417,22 @@ function renderAll(){
 }
 
 /***************************************************
- * PLACEHOLDERS (les fonctions continuent dans la partie 2)
+ * PLACEHOLDERS (implémentés en PARTIE 2/3)
  ***************************************************/
-function renderWeek(){ /* défini dans PARTIE 2 */ }
-function rebuildUpcoming(){ /* défini dans PARTIE 2 */ }
-function openModal(taskIndex){ /* défini dans PARTIE 2 */ }
-function renderMonth(){ /* défini dans PARTIE 2 */ }
-function renderStats(){ /* défini dans PARTIE 2 */ }
-function distributeWeek(){ /* défini dans PARTIE 2 */ }
-function refreshSelectors(){ /* défini dans PARTIE 2 */ }
+function renderWeek(){}
+function rebuildUpcoming(){}
+function openModal(taskIndex){}
+function renderMonth(){}
+function renderStats(){}
+function distributeWeek(){}
+function refreshSelectors(){}
 function recomputeNextDue(task){ if(!task.nextDue){ task.nextDue = todayISO(); } }
-function exportJSON(){ /* défini dans PARTIE 2 */ }
-function importJSON(){ /* défini dans PARTIE 2 */ }
-function clearAll(){ /* défini dans PARTIE 2 */ }
+function exportJSON(){}
+function importJSON(){}
+function clearAll(){}
 
 /***************************************************
- * INIT UI + EVENTS (partiellement ici, fin en PARTIE 2)
+ * INIT UI + EVENTS
  ***************************************************/
 function initUI(){
   // Thème
@@ -512,6 +452,7 @@ function initUI(){
   document.getElementById('todayBtn').addEventListener('click', ()=>{ weekOffset=0; renderWeek(); });
   document.getElementById('prevW').addEventListener('click', ()=>{ weekOffset--; saveWeekOffset(); renderWeek(); });
   document.getElementById('nextW').addEventListener('click', ()=>{ weekOffset++; saveWeekOffset(); renderWeek(); });
+  document.getElementById('autoBtn').addEventListener('click', ()=>{ distributeWeek(); renderWeek(); });
 
   // Panneaux
   const settingsPanel = document.getElementById('settingsPanel');
@@ -519,12 +460,10 @@ function initUI(){
   document.getElementById('themeToggle').addEventListener('click', ()=> { document.body.classList.toggle('dark'); prefs.theme = document.body.classList.contains('dark')? 'dark':'light'; saveAll(); });
 
   const statsPanel = document.getElementById('statsPanel');
-  document.getElementById('statsBtn').addEventListener('click', ()=> { statsPanel.classList.toggle('open'); renderStats(); });
+  document.getElementById('statsBtn').addEventListener('click', ()=> { statsPanel.classList.toggle('open'); setTimeout(renderStats, 0); });
   document.getElementById('statsFilter').addEventListener('change', renderStats);
 
-  // Absences : les handlers précis sont ajoutés en PARTIE 2 pour garder la continuité de code
-
-  // WHO Filter boutons
+  // WHO Filter
   document.getElementById('whoAll').addEventListener('click', ()=> setWhoFilter('all'));
   document.getElementById('whoY').addEventListener('click', ()=> setWhoFilter('y'));
   document.getElementById('whoM').addEventListener('click', ()=> setWhoFilter('m'));
@@ -552,10 +491,9 @@ let weekOffset = Number(localStorage.getItem('weekOffset')||0) || 0;
 function saveWeekOffset(){ localStorage.setItem('weekOffset', String(weekOffset)); }
 
 /***************************************************
- * BOOT (partagé)
+ * BOOT
  ***************************************************/
 (function boot(){
-  // Données de démonstration si vide
   if(tasks.length===0){
     tasks = [
       { id: uid(), name:'Vaisselle', duration:30, freq:1, nextDue: todayISO() },
@@ -570,19 +508,15 @@ function saveWeekOffset(){ localStorage.setItem('weekOffset', String(weekOffset)
     ];
   }
   initUI();
-  renderAll(); // les events arrivent après GIS token
+  renderAll();
 })();
 </script>
-<!--
-  ===== FIN PARTIE 1/2 =====
-  Ouvre maintenant la PARTIE 2/2 et colle-la à la suite de ce fichier pour exécuter en local.
--->
-<!--
-  ==========================
-  =  SCRIPT — PARTIE 2/2  =
-  ==========================
-  Cette partie complète le script en définissant toutes les fonctions laissées en placeholders dans la PARTIE 1/2.
-  Pour exécuter la page dans le canvas, vous pouvez aussi copier/coller les deux parties dans un même fichier.
+<!-- ===== FIN PARTIE 1/3 — Colle la PARTIE 2/3 ici (après ce script) -->
+<!-- ==========================
+     =  SCRIPT — PARTIE 2/3  =
+     ==========================
+     Implémente renderWeek, rebuildUpcoming, openModal (A11y), renderMonth,
+     renderStats (guard Chart.js), distributeWeek (corrigée)
 -->
 <script>
 /***************************************************
@@ -599,24 +533,24 @@ function renderWeek(){
   document.getElementById('weekTitle').textContent = `Semaine ${wkNum}`;
   document.getElementById('weekSub').textContent = `${frDate(monday)} – ${frDate(sunday)}`;
 
-  // Settings courants
   const target = Number(document.getElementById('targetInput').value)||75;
   const maxCap = Number(document.getElementById('maxInput').value)||90;
   const eventsWeight = document.getElementById('eventsWeight').value; // '0' | 'dur' | '30' | '60'
   const hideWeekends = (document.getElementById('hideWeekends').value||'no') === 'yes';
 
-  // Index
   const evByDate = groupByDate(events, ev => toISODateLocal(ev.start?.date || ev.start?.dateTime));
   const tasksByDate = groupByDate(tasks.filter(t=>t.nextDue), t => t.nextDue);
 
   const frag = document.createDocumentFragment();
+  const todayIso = todayISO();
   for(let i=0;i<7;i++){
     const dISO = addDaysISO(mondayISO_, i);
     const wd = new Date(dISO).getDay(); // 0..6 (dim..sam)
-    if(hideWeekends && (wd===0 || wd===6)) continue; // skip weekends
+    if(hideWeekends && (wd===0 || wd===6)) continue;
 
     const day = document.createElement('div'); day.className = 'day';
     if(absences.includes(dISO)) day.classList.add('absent');
+    if(dISO===todayIso) day.classList.add('today');
 
     const head = document.createElement('div'); head.className = 'day-head';
     const wdEl = document.createElement('div'); wdEl.className='weekday'; wdEl.textContent = frDay(dISO);
@@ -625,9 +559,8 @@ function renderWeek(){
 
     let total = 0;
 
-    // Tâches locales filtrées par whoFilter
     (tasksByDate.get(dISO)||[]).forEach(t=>{
-      const lastWho = lastWhoMap.get(t.id) ?? lastWhoMap.get(tasks.indexOf(t)); // compat anciens logs
+      const lastWho = lastWhoMap.get(t.id) ?? lastWhoMap.get(tasks.indexOf(t));
       if(whoFilter==='y' && lastWho!=='Yonice') return;
       if(whoFilter==='m' && lastWho!=='Marine') return;
       total += Number(t.duration)||0;
@@ -635,17 +568,18 @@ function renderWeek(){
       day.appendChild(p);
     });
 
-    // Événements Google Calendar — pondération configurable
     (evByDate.get(dISO)||[]).forEach(ev=>{
       const name = ev.summary || '(Sans titre)';
+      const allDay = !!ev.start?.date && !ev.start?.dateTime;
       let add = 0;
-      if(eventsWeight==='dur' && ev.start && ev.end && ev.start.dateTime && ev.end.dateTime){ add = minutesBetween(ev.start.dateTime, ev.end.dateTime); }
-      else if(eventsWeight==='30') add = 30; else if(eventsWeight==='60') add = 60; else add = 0;
+      if(eventsWeight==='dur' && ev.start?.dateTime && ev.end?.dateTime){ add = minutesBetween(ev.start.dateTime, ev.end.dateTime); }
+      else if(eventsWeight==='dur' && allDay){ add = 30; }
+      else if(eventsWeight==='30'){ add = 30; }
+      else if(eventsWeight==='60'){ add = 60; }
       total += add;
       const p = makePill(name, ['event'], add? `${add}m` : undefined); day.appendChild(p);
     });
 
-    // Pied : jauge
     const foot = document.createElement('div'); foot.className = 'day-foot';
     const chip = document.createElement('div'); chip.className='load-chip'; chip.textContent = `${total} / ${target} min`;
     const bar = document.createElement('div'); bar.className='load-bar';
@@ -658,7 +592,10 @@ function renderWeek(){
     const color = total <= target ? rs.getPropertyValue('--green').trim() : (total <= maxCap ? rs.getPropertyValue('--orange').trim() : rs.getPropertyValue('--red').trim());
     fill.style.background = color;
 
-    const tick = document.createElement('div'); tick.className='tick'; tick.style.left = (target>0? Math.min(100, (target/target*100)) : 100) + '%';
+    const tick = document.createElement('div'); tick.className='tick';
+    const tickPct = target>0 ? Math.min(100, (maxCap/target)*100) : 100; // correction: marque le plafond
+    tick.style.left = tickPct + '%';
+    tick.title = `Plafond: ${maxCap} min`;
 
     bar.appendChild(fill); bar.appendChild(tick);
     foot.appendChild(chip); foot.appendChild(bar);
@@ -675,8 +612,7 @@ function renderWeek(){
 function rebuildUpcoming(){
   const grid = document.getElementById('tasksGrid');
   grid.innerHTML = '';
-  const itemsAll = tasks.map((t, idx)=>({ ...t, _idx: idx }))
-    .filter(t=>t.nextDue);
+  const itemsAll = tasks.map((t, idx)=>({ ...t, _idx: idx })).filter(t=>t.nextDue);
 
   const filtered = itemsAll.filter(t=>{
     const lw = lastWhoMap.get(t.id) ?? lastWhoMap.get(t._idx);
@@ -712,14 +648,21 @@ function rebuildUpcoming(){
 }
 
 /***************************************************
- * MODAL — validation et logging (compat index -> id)
+ * MODAL — validation et logging (A11y + focus trap)
  ***************************************************/
 function openModal(taskIndex){
   const t = tasks[taskIndex];
-  document.getElementById('modalTaskName').textContent = `Qui a fait: ${t.name} ?`;
   const modal = document.getElementById('modal');
+  const btnY = document.getElementById('whoYonice');
+  const btnM = document.getElementById('whoMarine');
+  const title = document.getElementById('modalTaskName');
+  const prevActive = document.activeElement;
+
+  title.textContent = `Qui a fait: ${t.name} ?`;
   modal.style.display='flex';
-  const close = ()=>{ modal.style.display='none'; };
+  btnY.focus();
+
+  const close = ()=>{ modal.style.display='none'; document.removeEventListener('keydown', onKey); if(prevActive) prevActive.focus(); };
   const validate = who =>{
     logs.push({date: todayISO(), taskId: t.id ?? taskIndex, who, duration: t.duration||0});
     const base = t.nextDue && new Date(t.nextDue) > new Date(todayISO()) ? t.nextDue : todayISO();
@@ -729,8 +672,18 @@ function openModal(taskIndex){
     if(document.getElementById('autoChk').checked){ distributeWeek(); }
     renderAll();
   };
-  document.getElementById('whoYonice').onclick = ()=> validate('Yonice');
-  document.getElementById('whoMarine').onclick = ()=> validate('Marine');
+
+  btnY.onclick = ()=> validate('Yonice');
+  btnM.onclick = ()=> validate('Marine');
+
+  function onKey(e){
+    if(e.key==='Escape'){ e.preventDefault(); close(); }
+    if(e.key==='Tab'){
+      if(e.shiftKey && document.activeElement===btnY){ e.preventDefault(); btnM.focus(); }
+      else if(!e.shiftKey && document.activeElement===btnM){ e.preventDefault(); btnY.focus(); }
+    }
+  }
+  document.addEventListener('keydown', onKey);
   modal.addEventListener('click', (e)=>{ if(e.target===modal) close(); }, { once:true });
 }
 
@@ -764,7 +717,6 @@ function renderMonth(){
   }
 }
 
-// Toggle open/close
 (function wireAbsences(){
   const absPanel = document.getElementById('absencePanel');
   document.getElementById('absenceBtn').addEventListener('click', ()=>{
@@ -784,10 +736,11 @@ function renderMonth(){
 })();
 
 /***************************************************
- * STATS — Chart.js (camembert + barres + courbe)
+ * STATS — Chart.js (camembert + barres + courbe) avec garde
  ***************************************************/
 let pieChart, barChart, dailyChart;
 function renderStats(){
+  if(typeof Chart === 'undefined'){ return; } // Chart.js pas encore prêt
   const period = document.getElementById('statsFilter').value; // 'month' | 'year'
   const now = new Date();
   const start = period==='month' ? new Date(now.getFullYear(), now.getMonth(), 1) : new Date(now.getFullYear(), 0, 1);
@@ -813,7 +766,7 @@ function renderStats(){
 }
 
 /***************************************************
- * DISTRIBUTION — heuristique vers cible (cap max respecté)
+ * DISTRIBUTION — heuristique corrigée (SUPPRIME le doublon)
  ***************************************************/
 function distributeWeek(){
   const target = Number(document.getElementById('targetInput').value)||75;
@@ -821,89 +774,105 @@ function distributeWeek(){
   const mondayISO_ = mondayOf(weekOffset);
   const hideWeekendsPref = (document.getElementById('hideWeekends').value||'no')==='yes';
 
-  // All 7 days of the displayed week
-  const days = Array.from({length:7}, (_,i)=> addDaysISO(mondayISO_, i));
-  // Days we are allowed to schedule tasks on
-  const availableDays = days.filter(d => !absences.includes(d) && (!hideWeekendsPref || !isWeekend(d)));
+  const weekDays = Array.from({length:7}, (_,i)=> addDaysISO(mondayISO_, i));
+  const available = weekDays.filter(d => !absences.includes(d) && (!hideWeekendsPref || !isWeekend(d)));
 
-  // Build current loads for available days only
-  const dayLoad = new Map(availableDays.map(d=>[d,0]));
-  const inWeekTasks = tasks.filter(t=> days.includes(t.nextDue));
+  const load = new Map(available.map(d=>[d,0]));
+  const inWeek = tasks.filter(t=> weekDays.includes(t.nextDue));
+  for(const t of inWeek){ if(available.includes(t.nextDue)){ load.set(t.nextDue, (load.get(t.nextDue)||0) + (Number(t.duration)||0)); } }
 
-  // Pre-fill loads and mark tasks on unavailable days for move
-  const needsMove = [];
-  for(const t of inWeekTasks){
-    if(!availableDays.includes(t.nextDue)){
-      needsMove.push(t);
-    } else {
-      dayLoad.set(t.nextDue, (dayLoad.get(t.nextDue)||0) + (Number(t.duration)||0));
-    }
-  }
+  const sorted = [...inWeek].sort((a,b)=>(Number(b.duration)||0)-(Number(a.duration)||0));
 
-  // Sort tasks by duration desc to move heavy ones first (including overloaded days)
-  const byDate = [...inWeekTasks].sort((a,b)=> (Number(b.duration)||0) - (Number(a.duration)||0));
-
-  for(const t of byDate){
+  for(const t of sorted){
     const dur = Number(t.duration)||0;
-    let cur = t.nextDue;
-    let curLoad = availableDays.includes(cur) ? (dayLoad.get(cur)||0) : Infinity; // force move if unavailable
-
+    const cur = t.nextDue;
+    const curLoad = available.includes(cur) ? (load.get(cur)||0) : Infinity;
     const overloaded = curLoad > maxCap;
-    const mustMove = !availableDays.includes(cur) || overloaded;
-
+    const mustMove = !available.includes(cur) || overloaded;
     if(!mustMove) continue;
 
-    // Find best candidate day: prefer under target, closest in distance, respecting cap
-    let bestDay = null; let bestScore = Infinity;
-    for(const d of availableDays){
-      const l = dayLoad.get(d)||0;
-      if(l + dur > maxCap) continue; // respect cap
-      const distance = Math.abs(days.indexOf(d) - days.indexOf(cur));
+    let bestDay = null, bestScore = Infinity;
+    for(const d of available){
+      const l = load.get(d)||0;
+      if(l + dur > maxCap) continue;
+      const dist = Math.abs(weekDays.indexOf(d) - weekDays.indexOf(cur));
       const penalty = (l < target ? 0 : (l - target + 1));
-      const score = distance * 100 + penalty; // distance dominates, then how far above target
+      const score = dist * 100 + penalty;
       if(score < bestScore){ bestScore = score; bestDay = d; }
     }
+    if(!bestDay){ bestDay = available.reduce((minD,d)=> (load.get(d)||0) < (load.get(minD)||0) ? d : minD, available[0]); }
 
-    // Fallback: if nothing fits under cap, put on day with minimal load (still among availableDays)
-    if(!bestDay){
-      bestDay = availableDays.reduce((minD, d)=> (dayLoad.get(d)||0) < (dayLoad.get(minD)||0) ? d : minD, availableDays[0]);
-    }
-
-    // Apply move bookkeeping
-    if(availableDays.includes(cur)){
-      dayLoad.set(cur, Math.max(0, (dayLoad.get(cur)||0) - dur));
-    }
-    dayLoad.set(bestDay, (dayLoad.get(bestDay)||0) + dur);
+    if(available.includes(cur)) load.set(cur, Math.max(0,(load.get(cur)||0) - dur));
+    load.set(bestDay, (load.get(bestDay)||0) + dur);
     t.nextDue = bestDay;
   }
   saveAll();
 }
-      }
-    }
-    if(bestDay !== cur){
-      dayLoad.set(cur, (dayLoad.get(cur)||0) - (Number(t.duration)||0));
-      dayLoad.set(bestDay, (dayLoad.get(bestDay)||0) + (Number(t.duration)||0));
-      t.nextDue = bestDay;
-    }
-  }
-  saveAll();
-}
-
+</script>
+<!-- ===== FIN PARTIE 2/3 — Colle la PARTIE 3/3 ici (après ce script) -->
+<!-- ==========================
+     =  SCRIPT — PARTIE 3/3  =
+     ==========================
+     CRUD sélecteurs, export/import robustes, clear, raccourcis clavier,
+     fermeture du document.
+-->
+<script>
 /***************************************************
  * CRUD SELECTEURS — remplissage des listes
  ***************************************************/
 function refreshSelectors(){
   const editSel = document.getElementById('editSel');
   const delSel = document.getElementById('delSel');
+  if(!editSel || !delSel) return;
   editSel.innerHTML = ''; delSel.innerHTML = '';
   tasks.forEach((t,i)=>{
     const o1 = document.createElement('option'); o1.value = i; o1.textContent = t.name; editSel.appendChild(o1);
     const o2 = document.createElement('option'); o2.value = i; o2.textContent = t.name; delSel.appendChild(o2);
   });
+
+  // Bind CRUD boutons (une seule fois)
+  if(!refreshSelectors._bound){
+    refreshSelectors._bound = true;
+    document.getElementById('addBtn').addEventListener('click', ()=>{
+      const name = (document.getElementById('addName').value||'').trim();
+      const dur = Number(document.getElementById('addDur').value)||0;
+      const freq = Number(document.getElementById('addFreq').value)||7;
+      if(!name){ alert('Nom requis'); return; }
+      tasks.push({ id: uid(), name, duration: dur, freq, nextDue: todayISO() });
+      saveAll(); refreshSelectors(); renderAll();
+      document.getElementById('addName').value='';
+    });
+
+    document.getElementById('editSel').addEventListener('change', ()=>{
+      const i = Number(document.getElementById('editSel').value)||0;
+      const t = tasks[i]; if(!t) return;
+      document.getElementById('editName').value = t.name;
+      document.getElementById('editDur').value = t.duration;
+      document.getElementById('editFreq').value = t.freq;
+    });
+
+    document.getElementById('saveEdit').addEventListener('click', ()=>{
+      const i = Number(document.getElementById('editSel').value)||0;
+      const t = tasks[i]; if(!t) return;
+      t.name = (document.getElementById('editName').value||t.name).trim();
+      t.duration = Number(document.getElementById('editDur').value)||t.duration;
+      t.freq = Number(document.getElementById('editFreq').value)||t.freq;
+      saveAll(); refreshSelectors(); renderAll();
+    });
+
+    document.getElementById('delBtn').addEventListener('click', ()=>{
+      const i = Number(document.getElementById('delSel').value)||0;
+      const t = tasks[i]; if(!t) return;
+      if(confirm(`Supprimer la tâche « ${t.name} » ?`)){
+        tasks.splice(i,1);
+        saveAll(); refreshSelectors(); renderAll();
+      }
+    });
+  }
 }
 
 /***************************************************
- * EXPORT / IMPORT / CLEAR
+ * EXPORT / IMPORT / CLEAR (robuste)
  ***************************************************/
 function exportJSON(){
   const data = { tasks, absences, logs, prefs };
@@ -918,13 +887,42 @@ function importJSON(){
   inp.onchange = async ()=>{
     const file = inp.files[0]; if(!file) return;
     const txt = await file.text();
-    try{ const data = JSON.parse(txt); tasks = data.tasks||[]; absences = data.absences||[]; logs = data.logs||[]; prefs = data.prefs||{}; saveAll(); refreshSelectors(); renderAll(); }
-    catch(e){ alert('JSON invalide'); }
+    try{
+      const data = JSON.parse(txt);
+      const norm = (arr, def=[]) => Array.isArray(arr)?arr:def;
+      const obj  = v => (v && typeof v === 'object')? v : {};
+
+      tasks = norm(data.tasks).map(t=>({
+        id: (t && typeof t.id==='string' && t.id) ? t.id : uid(),
+        name: String(t?.name||'Tâche'),
+        duration: Number(t?.duration)||0,
+        freq: Number(t?.freq)||7,
+        nextDue: /^\d{4}-\d{2}-\d{2}$/.test(String(t?.nextDue)) ? t.nextDue : todayISO()
+      }));
+      const seen = new Set();
+      for(const t of tasks){ if(seen.has(t.id)) t.id = uid(); seen.add(t.id); }
+
+      absences = norm(data.absences).filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(String(x)));
+      logs = norm(data.logs).map(l=>({
+        date: /^\d{4}-\d{2}-\d{2}$/.test(String(l?.date)) ? l.date : todayISO(),
+        taskId: String(l?.taskId||''),
+        who: (l?.who==='Yonice'?'Yonice':'Marine'),
+        duration: Number(l?.duration)||0
+      }));
+      prefs = obj(data.prefs);
+
+      saveAll(); refreshSelectors(); renderAll();
+    }catch(e){ alert('JSON invalide'); }
   };
   inp.click();
 }
 
-function clearAll(){ if(confirm('Effacer toutes les données locales ?')){ tasks=[]; absences=[]; logs=[]; prefs={}; saveAll(); refreshSelectors(); renderAll(); } }
+function clearAll(){
+  if(confirm('Effacer toutes les données locales ?')){
+    tasks=[]; absences=[]; logs=[]; prefs={};
+    saveAll(); refreshSelectors(); renderAll();
+  }
+}
 
 /***************************************************
  * ÉVENEMENTS SUPPLÉMENTAIRES (clavier)
@@ -932,7 +930,7 @@ function clearAll(){ if(confirm('Effacer toutes les données locales ?')){ tasks
 (function wireKeyboard(){
   document.addEventListener('keydown', (e)=>{
     if((prefs.kbdHints||'on')==='off') return;
-    if(e.target && (/^(input|select|textarea)$/i).test(e.target.tagName)) return; // éviter dans champs
+    if(e.target && (/^(input|select|textarea)$/i).test(e.target.tagName)) return;
     if(e.key==='y' || e.key==='Y'){ setWhoFilter('y'); }
     else if(e.key==='m' || e.key==='M'){ setWhoFilter('m'); }
     else if(e.key==='a' || e.key==='A'){ setWhoFilter('all'); }
@@ -942,6 +940,6 @@ function clearAll(){ if(confirm('Effacer toutes les données locales ?')){ tasks
   });
 })();
 </script>
-<!-- FIN PARTIE 2/2 -->
+<!-- ===== FIN PARTIE 3/3 -->
 </body>
 </html>
