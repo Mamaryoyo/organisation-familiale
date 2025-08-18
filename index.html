@@ -3,23 +3,33 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Organisation familiale — corrigée</title>
+<title>Organisation familiale — version complète (GIS + fixes + jauge)</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<!-- Google Identity Services (auth) + gapi client (API) -->
+<!-- Chart.js for stats -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" async></script>
+<!-- Google Identity Services (auth) + gapi client (Calendar API) -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js" async defer></script>
 <style>
+  /********************************************************************
+  * THEME & TOKENS
+  ********************************************************************/
   :root{
-    --bg:#f6f7f9; --panel:#ffffff; --text:#2e2e2e; --muted:#6b7280; --line:#e5e7eb;
+    --bg:#f6f7f9; --panel:#ffffff; --text:#1f2937; --muted:#6b7280; --line:#e5e7eb;
     --blue:#2563eb; --yellow:#facc15; --green:#22c55e; --orange:#f59e0b; --red:#ef4444;
-    --red-soft:#fee2e2; --red-soft-dark:rgba(239,68,68,.18);
+    --red-soft:#fee2e2; --red-soft-dark:rgba(239,68,68,.15);
     --card:#ffffff; --card-soft:#f3f4f6; --shadow:0 1px 3px rgba(0,0,0,.08);
+    --ring: 0 0 0 2px rgba(37,99,235,.35);
   }
   body.dark{
     --bg:#1f1f23; --panel:#2b2b31; --text:#e5e5e5; --muted:#9ca3af; --line:#3b3b45;
     --card:#2b2b31; --card-soft:#3a3a42; --shadow:0 1px 3px rgba(0,0,0,.35);
+    --ring: 0 0 0 2px rgba(99,102,241,.45);
   }
+
+  /********************************************************************
+  * BASE
+  ********************************************************************/
   *{box-sizing:border-box}
   html,body{height:100%}
   body{
@@ -27,11 +37,18 @@
     background:var(--bg); color:var(--text); display:flex; height:100vh; overflow:hidden;
     transition:background .3s,color .3s;
   }
+  button{font:inherit}
+  button:focus{outline:none; box-shadow:var(--ring);}
+  a{color:inherit}
 
+  /********************************************************************
+  * LAYOUT
+  ********************************************************************/
   .app{display:flex; flex:1; width:100%; height:100%;}
-  .left{flex:2; display:flex; flex-direction:column; border-right:1px solid var(--line); min-width:560px;}
+  .left{flex:2; display:flex; flex-direction:column; border-right:1px solid var(--line); min-width:640px;}
   .right{flex:1; display:flex; flex-direction:column; min-width:360px;}
 
+  /* Top bar */
   .bar{display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5}
   .title{font-weight:600; font-size:18px}
   .sub{font-size:13px; color:var(--muted)}
@@ -41,12 +58,15 @@
   .btn:hover{filter:brightness(0.98)}
   .icon{background:var(--panel); border:1px solid var(--line); padding:6px 10px; border-radius:8px; cursor:pointer; font-size:18px; line-height:1; box-shadow:var(--shadow); color:var(--text)}
 
-  .week-wrap{flex:1; overflow:auto; background:var(--panel)}
-  .week-view{display:flex; gap:8px; padding:12px; transform:translateX(0); transition:transform .35s ease}
-  .day{flex:1; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px; display:flex; flex-direction:column; align-items:stretch; box-shadow:var(--shadow); min-width:0}
+  /********************************************************************
+  * WEEK VIEW — fixed height + columns gauge
+  ********************************************************************/
+  .week-wrap{flex:none; height:620px; overflow:auto; background:var(--panel)}
+  .week-view{display:flex; gap:8px; padding:12px; transform:translateX(0); transition:transform .35s ease; height:100%}
+  .day{flex:1; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; display:flex; flex-direction:column; align-items:stretch; box-shadow:var(--shadow); min-width:0; height:100%}
   .day-head{display:flex; flex-direction:column; align-items:center; margin-bottom:8px}
-  .weekday{font-size:16px; font-weight:400; text-transform:capitalize}
-  .date{font-size:13px; color:var(--muted)}
+  .weekday{font-size:16px; font-weight:500; text-transform:capitalize}
+  .date{font-size:12px; color:var(--muted)}
   .today-ring{border:2px solid var(--blue); border-radius:10px; padding:2px 6px}
   .pill{margin-top:6px; background:var(--panel); border-radius:10px; padding:8px; font-size:12px; border-left:6px solid #ccc; box-shadow:var(--shadow); display:flex; align-items:center; justify-content:space-between; gap:8px}
   .pill .badge{font-size:11px; padding:2px 6px; border-radius:999px; background:#e5e7eb; color:#111}
@@ -54,29 +74,30 @@
   .pill.yonice{border-left-color:var(--blue)}
   .pill.marine{border-left-color:var(--yellow)}
   .pill.event{border-left-color:var(--green)}
-  .absent{background:linear-gradient(180deg, rgba(239,68,68,.12), rgba(239,68,68,.08)); outline:1px dashed rgba(239,68,68,.6);}
-  .day-foot{margin-top:auto; display:flex; flex-direction:column; align-items:center; gap:6px}
+  .absent{background:linear-gradient(180deg, rgba(239,68,68,.12), rgba(239,68,68,.08)); outline:1px dashed rgba(239,68,68,.6);}  
+  .day-foot{margin-top:auto; display:flex; flex-direction:column; align-items:center; gap:6px; padding-top:8px}
   .load-chip{font-size:11px; color:var(--muted); background:var(--card-soft); border:1px solid var(--line); border-radius:999px; padding:2px 8px}
-  .load-bar{height:6px; width:80%; border-radius:4px; background:var(--line); overflow:hidden}
-  .load-fill{height:100%; border-radius:4px}
+  .load-bar{height:8px; width:86%; border-radius:999px; background:var(--line); overflow:hidden; position:relative}
+  .load-fill{height:100%; border-radius:999px; width:0}
+  .tick{position:absolute; top:50%; transform:translateY(-50%); width:2px; height:8px; background:var(--muted); opacity:.35}
 
-  .month{background:var(--panel); border-top:1px solid var(--line); padding:10px 12px}
+  /********************************************************************
+  * MONTH (absences)
+  ********************************************************************/
+  .month{background:var(--panel); border-top:1px solid var(--line); padding:10px 12px; display:none}
   .month-top{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:6px}
   .month-title{font-weight:600; flex:1; text-align:center}
   .days-head{display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:6px; color:var(--muted); font-size:11px; text-align:center}
   .grid{display:grid; grid-template-columns:repeat(7,1fr); gap:6px}
-  .cell{
-    width:34px; height:34px; border-radius:50%;
-    display:flex; align-items:center; justify-content:center;
-    font-size:12px; cursor:pointer; user-select:none;
-    background:transparent; border:1px solid var(--line); color:var(--text);
-    transition:transform .08s ease, background .2s ease, border-color .2s ease;
-  }
+  .cell{width:34px; height:34px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:12px; cursor:pointer; user-select:none; background:transparent; border:1px solid var(--line); color:var(--text); transition:transform .08s ease, background .2s ease, border-color .2s ease}
   .cell:hover{transform:scale(1.04)}
   .cell.today{box-shadow:0 0 0 2px var(--blue) inset; border-color:var(--blue); font-weight:700}
   .cell.wknd{background:var(--card-soft); color:var(--muted)}
   .cell.abs{background:var(--red); color:#fff; border-color:var(--red)}
 
+  /********************************************************************
+  * RIGHT — Upcoming tasks grid
+  ********************************************************************/
   .right-head{padding:12px 14px; background:var(--panel); border-bottom:1px solid var(--line)}
   .tasks{flex:1; padding:12px; display:grid; grid-template-columns:repeat(3,1fr); gap:10px; overflow:auto}
   .card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; text-align:center; box-shadow:var(--shadow); cursor:pointer; transition:transform .12s ease, opacity .25s ease}
@@ -90,15 +111,21 @@
   .late{background:var(--red-soft); border-color:var(--red)}
   body.dark .late{background:var(--red-soft-dark); border-color:var(--red); color:#fca5a5}
 
+  /********************************************************************
+  * MODAL
+  ********************************************************************/
   .modal{position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.45); backdrop-filter:blur(6px); z-index:20}
-  .dialog{background:var(--panel); color:var(--text); padding:18px; border-radius:12px; width:min(360px,90vw); box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .dialog{background:var(--panel); color:var(--text); padding:18px; border-radius:12px; width:min(380px,90vw); box-shadow:0 10px 30px rgba(0,0,0,.25)}
   .dialog h3{margin:0 0 12px 0; font-size:16px; font-weight:600; text-align:center}
   .who{display:flex; gap:10px}
   .wbtn{flex:1; padding:10px; border-radius:10px; border:none; cursor:pointer; font-weight:700}
   .wbtn.yonice{background:var(--blue); color:#fff}
   .wbtn.marine{background:var(--yellow); color:#333}
 
-  .panel{position:fixed; top:0; right:-380px; width:380px; height:100%; background:var(--panel); border-left:1px solid var(--line); box-shadow:-4px 0 12px rgba(0,0,0,.12); transition:right .28s ease; z-index:25; display:flex; flex-direction:column}
+  /********************************************************************
+  * PANELS (settings & stats)
+  ********************************************************************/
+  .panel{position:fixed; top:0; right:-420px; width:420px; height:100%; background:var(--panel); border-left:1px solid var(--line); box-shadow:-4px 0 12px rgba(0,0,0,.12); transition:right .28s ease; z-index:25; display:flex; flex-direction:column}
   .panel.open{right:0}
   .p-head{padding:14px; border-bottom:1px solid var(--line); font-weight:700}
   .p-body{padding:14px; overflow:auto; display:flex; flex-direction:column; gap:12px}
@@ -107,9 +134,12 @@
   hr{border:none; border-top:1px solid var(--line); margin:6px 0}
   .row{display:flex; gap:8px}
   .row > *{flex:1}
-
   .chart{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; box-shadow:var(--shadow)}
 
+  /********************************************************************
+  * RESPONSIVE
+  ********************************************************************/
+  @media (max-width:1200px){ .left{min-width:520px} }
   @media (max-width:980px){ .left{min-width:0} .right{min-width:0} .tasks{grid-template-columns:repeat(2,1fr)} }
   @media (max-width:720px){ .app{flex-direction:column} .tasks{grid-template-columns:1fr} }
 </style>
@@ -139,7 +169,7 @@
       </div>
 
       <!-- Panneau absences (repliable) -->
-      <div class="month" id="absencePanel" style="display:none">
+      <div class="month" id="absencePanel">
         <div class="month-top">
           <button class="btn" id="prevM" title="Mois précédent">‹</button>
           <div class="month-title" id="monthTitle">Mois</div>
@@ -176,9 +206,9 @@
   <div class="panel" id="settingsPanel" aria-label="Panneau paramètres">
     <div class="p-head">Paramètres</div>
     <div class="p-body">
-      <button class="btn" id="themeToggle">Basculer clair / sombre</button>
-      <div>
-        <label><input type="checkbox" id="autoChk"> Auto-répartir après chaque changement</label>
+      <div class="row">
+        <button class="btn" id="themeToggle">Basculer clair / sombre</button>
+        <label style="display:flex; align-items:center; gap:8px"><input type="checkbox" id="autoChk"> Auto-répartir après chaque changement</label>
       </div>
       <hr>
       <div style="font-weight:600">⚙️ Objectifs</div>
@@ -186,11 +216,21 @@
         <div><label>Cible idéale (min)</label><input id="targetInput" type="number" min="10" step="5" value="75"></div>
         <div><label>Plafond max (min)</label><input id="maxInput" type="number" min="10" step="5" value="90"></div>
       </div>
+      <div class="row">
+        <div><label>Inclure événements Google dans la charge</label>
+          <select id="eventsWeight">
+            <option value="0">Ignorer (0 min)</option>
+            <option value="dur">Durée réelle (si dispo)</option>
+            <option value="30">Forfait 30 min</option>
+            <option value="60">Forfait 60 min</option>
+          </select>
+        </div>
+      </div>
       <hr>
       <div style="font-weight:600">➕ Ajouter une tâche</div>
       <div class="row">
         <div><label>Nom</label><input id="addName" placeholder="Ex. Nettoyer frigo"></div>
-        <div><label>Durée</label><input id="addDur" type="number" min="1" step="1" value="30"></div>
+        <div><label>Durée (min)</label><input id="addDur" type="number" min="1" step="1" value="30"></div>
         <div><label>Fréquence (jours)</label><input id="addFreq" type="number" min="1" step="1" value="7"></div>
       </div>
       <button class="btn" id="addBtn">Ajouter</button>
@@ -207,6 +247,13 @@
       <div style="font-weight:600">🗑️ Supprimer une tâche</div>
       <div><label>Choisir</label><select id="delSel"></select></div>
       <button class="btn" id="delBtn">Supprimer</button>
+      <hr>
+      <div style="font-weight:600">🧹 Données</div>
+      <div class="row">
+        <button class="btn" id="exportBtn">Exporter JSON</button>
+        <button class="btn" id="importBtn">Importer JSON</button>
+        <button class="btn" id="clearBtn">Réinitialiser</button>
+      </div>
     </div>
   </div>
 
@@ -222,99 +269,48 @@
       </div>
       <div class="chart"><canvas id="pie"></canvas></div>
       <div class="chart"><canvas id="bars"></canvas></div>
+      <div class="chart"><canvas id="daily"></canvas></div>
     </div>
   </div>
 
 <script>
-/******************** CONFIG GAPI + GIS *************************/
+/*************************************************************
+ * CONFIG — Google API (Calendar) via GIS
+ *************************************************************/
 const CLIENT_ID = "691551955911-i6mhvllgop4f1u5q2k144tmqvt6q2pei.apps.googleusercontent.com";
 const SCOPES    = "https://www.googleapis.com/auth/calendar.readonly";
 let tokenClient; // GIS token client
-let gapiInited = false;
-let gisInited = false;
+let gapiInited = false; let gisInited = false;
+let events = []; // Google Calendar events
 
-// Called when gapi script loads
+// load gapi client
 window.addEventListener('load', () => {
-  // Wait for both libraries to be ready
-  if (window.gapi) {
+  if (window.gapi){
     gapi.load('client', async () => {
-      await gapi.client.init({
-        discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
-      });
+      await gapi.client.init({ discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"] });
       gapiInited = true; maybeEnable();
     });
   }
-
-  let gisReadyInterval = setInterval(() => {
-    if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+  const iv = setInterval(() => {
+    if (window.google && window.google.accounts && window.google.accounts.oauth2){
       tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
         callback: async (resp) => {
-          if (resp && resp.access_token) {
+          if (resp && resp.access_token){
             gapi.client.setToken({access_token: resp.access_token});
             await listEvents();
           }
         }
       });
       gisInited = true; maybeEnable();
-      clearInterval(gisReadyInterval);
+      clearInterval(iv);
     }
   }, 50);
 });
 
-function maybeEnable(){
-  if (gapiInited && gisInited){
-    // Request consent token on first load
-    tokenClient.requestAccessToken({ prompt: 'consent' });
-  }
-}
+function maybeEnable(){ if (gapiInited && gisInited){ tokenClient.requestAccessToken({ prompt:'consent' }); } }
 
-/******************** Données & stockage *************************/
-const TASKS_KEY='tasks_v6';
-const ABS_KEY='absences_v6';
-const LOGS_KEY='logs_v6';
-
-let tasks = JSON.parse(localStorage.getItem(TASKS_KEY) || '[]');
-let absences = JSON.parse(localStorage.getItem(ABS_KEY) || '[]'); // ["YYYY-MM-DD", ...]
-let logs = JSON.parse(localStorage.getItem(LOGS_KEY) || '[]'); // {date, taskId, who, duration}
-
-function saveAll(){
-  localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
-  localStorage.setItem(ABS_KEY, JSON.stringify(absences));
-  localStorage.setItem(LOGS_KEY, JSON.stringify(logs));
-}
-
-/******************** Utils dates *************************/
-const pad = n => String(n).padStart(2,'0');
-const toISODateLocal = (d)=>{
-  const x = new Date(d);
-  const y = new Date(x.getFullYear(), x.getMonth(), x.getDate());
-  return `${y.getFullYear()}-${pad(y.getMonth()+1)}-${pad(y.getDate())}`;
-};
-const todayISO = () => toISODateLocal(new Date());
-const addDaysISO = (iso, n)=>{
-  const [Y,M,D] = iso.split('-').map(Number);
-  return toISODateLocal(new Date(Y, M-1, D + n));
-};
-const mondayOf = (weekOffset=0) => {
-  const now = new Date();
-  const wd = (now.getDay()||7); // 1..7
-  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - wd + 1 + weekOffset*7);
-  return toISODateLocal(monday);
-};
-const frDay = d => new Date(d).toLocaleDateString('fr-FR',{weekday:'long'});
-const frDate = d => new Date(d).toLocaleDateString('fr-FR',{day:'numeric',month:'long'});
-function getWeekNumber(d){
-  d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const dayNum = d.getUTCDay() || 7; d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
-  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-}
-const isWeekend = iso => { const wd = new Date(iso).getDay(); return wd===0 || wd===6; };
-
-/******************** Google Calendar *************************/
-let events = [];
 async function listEvents(){
   try{
     const resp = await gapi.client.calendar.events.list({
@@ -322,66 +318,93 @@ async function listEvents(){
       timeMin: new Date().toISOString(),
       showDeleted: false,
       singleEvents: true,
-      maxResults: 50,
+      maxResults: 100,
       orderBy: 'startTime'
     });
     events = resp.result.items || [];
     renderAll();
-  }catch(e){
-    console.warn('Erreur events', e);
-  }
+  }catch(e){ console.warn('Erreur events', e); }
 }
 
-/******************** Rendu semaine *************************/
-let weekOffset = 0;
+/*************************************************************
+ * STORAGE & DATA
+ *************************************************************/
+const TASKS_KEY='tasks_v7';
+const ABS_KEY='absences_v7';
+const LOGS_KEY='logs_v7';
+const PREF_KEY='prefs_v7';
 
-function groupByDate(items, getDateStr){
-  const map = new Map();
-  for(const it of items){
-    const k = getDateStr(it);
-    if(!map.has(k)) map.set(k, []);
-    map.get(k).push(it);
-  }
-  return map;
+let tasks = JSON.parse(localStorage.getItem(TASKS_KEY) || '[]');
+let absences = JSON.parse(localStorage.getItem(ABS_KEY) || '[]'); // ["YYYY-MM-DD", ...]
+let logs = JSON.parse(localStorage.getItem(LOGS_KEY) || '[]'); // {date, taskId, who, duration}
+let prefs = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
+
+function saveAll(){
+  localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+  localStorage.setItem(ABS_KEY, JSON.stringify(absences));
+  localStorage.setItem(LOGS_KEY, JSON.stringify(logs));
+  localStorage.setItem(PREF_KEY, JSON.stringify(prefs));
 }
 
+/*************************************************************
+ * DATE UTILS
+ *************************************************************/
+const pad = n => String(n).padStart(2,'0');
+const toISODateLocal = (d)=>{ const x = new Date(d); const y = new Date(x.getFullYear(), x.getMonth(), x.getDate()); return `${y.getFullYear()}-${pad(y.getMonth()+1)}-${pad(y.getDate())}`; };
+const todayISO = () => toISODateLocal(new Date());
+const addDaysISO = (iso, n)=>{ const [Y,M,D] = iso.split('-').map(Number); return toISODateLocal(new Date(Y, M-1, D + n)); };
+const mondayOf = (weekOffset=0) => { const now = new Date(); const wd = (now.getDay()||7); const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - wd + 1 + weekOffset*7); return toISODateLocal(monday); };
+const frDay = d => new Date(d).toLocaleDateString('fr-FR',{weekday:'long'});
+const frDate = d => new Date(d).toLocaleDateString('fr-FR',{day:'numeric',month:'long'});
+function getWeekNumber(d){ d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const dayNum = d.getUTCDay() || 7; d.setUTCDate(d.getUTCDate() + 4 - dayNum); const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1)); return Math.ceil((((d - yearStart) / 86400000) + 1) / 7); }
+const isWeekend = iso => { const wd = new Date(iso).getDay(); return wd===0 || wd===6; };
+
+/*************************************************************
+ * HELPERS
+ *************************************************************/
+function uid(){ return Math.random().toString(36).slice(2,10); }
+function groupByDate(items, getDateStr){ const map = new Map(); for(const it of items){ const k = getDateStr(it); if(!map.has(k)) map.set(k, []); map.get(k).push(it);} return map; }
+function minutesBetween(start, end){ const s = new Date(start).getTime(); const e = new Date(end).getTime(); if(!isFinite(s)||!isFinite(e)|| e<=s) return 0; return Math.round((e-s)/60000); }
+
+/*************************************************************
+ * UI BUILDERS
+ *************************************************************/
 function makePill(text, classes=[], badgeText){
-  const d = document.createElement('div');
-  d.className = 'pill ' + classes.join(' ');
-  const left = document.createElement('span'); left.textContent = text;
-  d.appendChild(left);
-  if(badgeText!==undefined){
-    const b = document.createElement('span'); b.className='badge'; b.textContent = badgeText;
-    d.appendChild(b);
-  }
+  const d = document.createElement('div'); d.className = 'pill ' + classes.join(' ');
+  const left = document.createElement('span'); left.textContent = text; d.appendChild(left);
+  if(badgeText!==undefined){ const b = document.createElement('span'); b.className='badge'; b.textContent = badgeText; d.appendChild(b); }
   return d;
 }
+
+/*************************************************************
+ * WEEK RENDERING with fixed height and per-column gauge
+ *************************************************************/
+let weekOffset = 0;
 
 function renderWeek(){
   const weekView = document.getElementById('weekView');
   weekView.innerHTML = '';
 
   const mondayISO_ = mondayOf(weekOffset);
-  const mondayDate = new Date(mondayISO_);
-
-  // En-tête semaine
   const monday = new Date(mondayISO_);
   const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()+6);
   const wkNum = getWeekNumber(monday);
   document.getElementById('weekTitle').textContent = `Semaine ${wkNum}`;
   document.getElementById('weekSub').textContent = `${frDate(monday)} – ${frDate(sunday)}`;
 
-  // Préparer index par date
+  // Settings
+  const target = Number(document.getElementById('targetInput').value)||75;
+  const maxCap = Number(document.getElementById('maxInput').value)||90;
+  const eventsWeight = document.getElementById('eventsWeight').value; // '0' | 'dur' | '30' | '60'
+
+  // Index
   const eventsByDate = groupByDate(events, ev => toISODateLocal(ev.start.date || ev.start.dateTime));
   const tasksByDate = groupByDate(tasks.filter(t=>t.nextDue), t => t.nextDue);
 
   const frag = document.createDocumentFragment();
   for(let i=0;i<7;i++){
     const dISO = addDaysISO(mondayISO_, i);
-    const day = document.createElement('div');
-    day.className = 'day';
-
-    // Absent?
+    const day = document.createElement('div'); day.className = 'day';
     if(absences.includes(dISO)) day.classList.add('absent');
 
     const head = document.createElement('div'); head.className = 'day-head';
@@ -389,53 +412,65 @@ function renderWeek(){
     const dt = document.createElement('div'); dt.className='date'; dt.textContent = frDate(dISO);
     head.appendChild(wd); head.appendChild(dt); day.appendChild(head);
 
-    // Tâches locales dues
+    let total = 0;
+
+    // Local tasks
     (tasksByDate.get(dISO)||[]).forEach(t=>{
-      const p = makePill(t.name, [], `${t.duration||0}m`);
-      day.appendChild(p);
+      total += Number(t.duration)||0;
+      const p = makePill(t.name, [], `${t.duration||0}m`); day.appendChild(p);
     });
 
-    // Evénements Calendar
+    // Calendar events
     (eventsByDate.get(dISO)||[]).forEach(ev=>{
       const name = ev.summary || '(Sans titre)';
-      const p = makePill(name, ['event']);
-      day.appendChild(p);
+      let add = 0;
+      if(eventsWeight==='dur' && ev.start && ev.end && ev.start.dateTime && ev.end.dateTime){ add = minutesBetween(ev.start.dateTime, ev.end.dateTime); }
+      else if(eventsWeight==='30') add = 30; else if(eventsWeight==='60') add = 60; else add = 0;
+      total += add;
+      const p = makePill(name, ['event'], add? `${add}m` : undefined); day.appendChild(p);
     });
+
+    // FOOT GAUGE
+    const foot = document.createElement('div'); foot.className = 'day-foot';
+    const chip = document.createElement('div'); chip.className='load-chip'; chip.textContent = `${total} / ${target} min`;
+    const bar = document.createElement('div'); bar.className='load-bar';
+    const fill = document.createElement('div'); fill.className='load-fill';
+
+    const pct = target>0 ? Math.min(100, Math.round(total/target*100)) : 0;
+    fill.style.width = pct + '%';
+
+    const rs = getComputedStyle(document.documentElement);
+    const color = total <= target ? rs.getPropertyValue('--green').trim() : (total <= maxCap ? rs.getPropertyValue('--orange').trim() : rs.getPropertyValue('--red').trim());
+    fill.style.background = color;
+
+    // optional tick for target
+    const tick = document.createElement('div'); tick.className='tick'; tick.style.left = Math.min(100, Math.round(100)) + '%'; tick.style.left = (target>0? Math.min(100, (target/target*100)) : 100) + '%';
+
+    bar.appendChild(fill); bar.appendChild(tick);
+    foot.appendChild(chip); foot.appendChild(bar);
+    day.appendChild(foot);
 
     frag.appendChild(day);
   }
   weekView.appendChild(frag);
 }
 
-/******************** Tâches: CRUD + planning *************************/
-function refreshSelectors(){
-  const editSel = document.getElementById('editSel');
-  const delSel = document.getElementById('delSel');
-  editSel.innerHTML = ''; delSel.innerHTML = '';
-  tasks.forEach((t,i)=>{
-    const o1 = document.createElement('option'); o1.value = i; o1.textContent = t.name; editSel.appendChild(o1);
-    const o2 = document.createElement('option'); o2.value = i; o2.textContent = t.name; delSel.appendChild(o2);
-  });
-}
-
-function recomputeNextDue(task){
-  // Si la tâche n'a jamais été faite: si nextDue existe, conserver; sinon planifier à aujourd'hui
-  if(!task.nextDue){ task.nextDue = todayISO(); }
-}
-
+/*************************************************************
+ * UPCOMING TASKS GRID
+ *************************************************************/
 function rebuildUpcoming(){
   const grid = document.getElementById('tasksGrid');
   grid.innerHTML = '';
-  const items = tasks
-    .map((t, idx)=>({ ...t, _idx: idx }))
+  const items = tasks.map((t, idx)=>({ ...t, _idx: idx }))
     .filter(t=>t.nextDue)
     .sort((a,b)=> a.nextDue.localeCompare(b.nextDue))
     .slice(0,9);
 
   const frag = document.createDocumentFragment();
+  const today = new Date(todayISO());
   items.forEach(t=>{
     const card = document.createElement('div');
-    const delta = (new Date(t.nextDue) - new Date(todayISO()))/86400000;
+    const delta = Math.floor((new Date(t.nextDue) - today)/86400000);
     card.className = 'card ' + (delta<0? 'late':'upcoming');
     card.tabIndex = 0;
 
@@ -451,6 +486,9 @@ function rebuildUpcoming(){
   grid.appendChild(frag);
 }
 
+/*************************************************************
+ * MODAL VALIDATION + LOGGING
+ *************************************************************/
 function openModal(taskIndex){
   const t = tasks[taskIndex];
   document.getElementById('modalTaskName').textContent = `Qui a fait: ${t.name} ?`;
@@ -458,13 +496,13 @@ function openModal(taskIndex){
   modal.style.display='flex';
   const close = ()=>{ modal.style.display='none'; };
   const validate = who =>{
-    // Log
     logs.push({date: todayISO(), taskId: taskIndex, who, duration: t.duration||0});
-    // Prochaine date
+    // Prochaine échéance (base = max(aujourd'hui, nextDue))
     const base = t.nextDue && new Date(t.nextDue) > new Date(todayISO()) ? t.nextDue : todayISO();
     t.nextDue = addDaysISO(base, t.freq||7);
     saveAll();
     close();
+    if(document.getElementById('autoChk').checked){ distributeWeek(); }
     renderAll();
   };
   document.getElementById('whoYonice').onclick = ()=> validate('Yonice');
@@ -472,23 +510,21 @@ function openModal(taskIndex){
   modal.addEventListener('click', (e)=>{ if(e.target===modal) close(); }, { once:true });
 }
 
-/******************** Absences: mois *************************/
-let monthCursor = toISODateLocal(new Date()); // YYYY-MM-DD (jour quelconque du mois courant)
+/*************************************************************
+ * ABSENCES — MONTH VIEW
+ *************************************************************/
+let monthCursor = toISODateLocal(new Date()); // any day of current month
 
 function renderMonth(){
   const [Y,M] = monthCursor.split('-').map(Number);
   const first = new Date(Y, M-1, 1);
-  const firstWeekday = (first.getDay()||7); // 1..7, lundi=1
+  const firstWeekday = (first.getDay()||7); // 1..7, monday=1
   const daysInMonth = new Date(Y, M, 0).getDate();
   const grid = document.getElementById('monthGrid');
   grid.innerHTML = '';
   document.getElementById('monthTitle').textContent = first.toLocaleDateString('fr-FR', {month:'long', year:'numeric'});
 
-  // Blanks from Monday
-  for(let b=1; b<firstWeekday; b++){
-    const ph = document.createElement('div');
-    grid.appendChild(ph);
-  }
+  for(let b=1; b<firstWeekday; b++){ const ph = document.createElement('div'); grid.appendChild(ph); }
   for(let d=1; d<=daysInMonth; d++){
     const iso = toISODateLocal(new Date(Y, M-1, d));
     const cell = document.createElement('div');
@@ -505,43 +541,119 @@ function renderMonth(){
   }
 }
 
-/******************** Stats *************************/
-let pieChart, barChart;
+/*************************************************************
+ * STATS (Chart.js)
+ *************************************************************/
+let pieChart, barChart, dailyChart;
 function renderStats(){
   const period = document.getElementById('statsFilter').value; // 'month' | 'year'
   const now = new Date();
-  const start = period==='month' ? new Date(now.getFullYear(), now.getMonth(), 1)
-                                 : new Date(now.getFullYear(), 0, 1);
+  const start = period==='month' ? new Date(now.getFullYear(), now.getMonth(), 1) : new Date(now.getFullYear(), 0, 1);
   const startISO = toISODateLocal(start);
-
   const filt = logs.filter(l => l.date >= startISO);
+
   const sumByWho = { Yonice:0, Marine:0 };
   const byDay = {};
-  for(const l of filt){
-    sumByWho[l.who] = (sumByWho[l.who]||0) + (l.duration||0);
-    byDay[l.date] = (byDay[l.date]||0) + (l.duration||0);
-  }
+  for(const l of filt){ sumByWho[l.who] = (sumByWho[l.who]||0) + (l.duration||0); byDay[l.date] = (byDay[l.date]||0) + (l.duration||0); }
 
   // Pie
-  const pctx = document.getElementById('pie');
-  if (pieChart) pieChart.destroy();
+  const pctx = document.getElementById('pie'); if (pieChart) pieChart.destroy();
   pieChart = new Chart(pctx, { type:'pie', data:{ labels:Object.keys(sumByWho), datasets:[{ data:Object.values(sumByWho) }] }, options:{ responsive:true } });
 
   // Bars (7 derniers jours)
   const labels = []; const data = [];
-  for(let i=6;i>=0;i--){
-    const iso = addDaysISO(todayISO(), -i);
-    labels.push(new Date(iso).toLocaleDateString('fr-FR',{weekday:'short'}));
-    data.push(byDay[iso]||0);
-  }
-  const bctx = document.getElementById('bars');
-  if (barChart) barChart.destroy();
+  for(let i=6;i>=0;i--){ const iso = addDaysISO(todayISO(), -i); labels.push(new Date(iso).toLocaleDateString('fr-FR',{weekday:'short'})); data.push(byDay[iso]||0); }
+  const bctx = document.getElementById('bars'); if (barChart) barChart.destroy();
   barChart = new Chart(bctx, { type:'bar', data:{ labels, datasets:[{ label:'Durée (min)', data }] }, options:{ responsive:true } });
+
+  // Daily (charges des 14 derniers jours)
+  const labels2 = []; const data2 = [];
+  for(let i=13;i>=0;i--){ const iso = addDaysISO(todayISO(), -i); labels2.push(iso.slice(5)); let s=0; const dTasks = tasks.filter(t=>t.nextDue===iso); dTasks.forEach(t=> s+= Number(t.duration)||0); data2.push(s); }
+  const dctx = document.getElementById('daily'); if (dailyChart) dailyChart.destroy();
+  dailyChart = new Chart(dctx, { type:'line', data:{ labels:labels2, datasets:[{ label:'Charge tâches (min)', data:data2, tension:.3 }] }, options:{ responsive:true } });
 }
 
-/******************** UI wiring *************************/
+/*************************************************************
+ * DISTRIBUTION (simple heuristic towards target)
+ *************************************************************/
+function distributeWeek(){
+  const target = Number(document.getElementById('targetInput').value)||75;
+  const maxCap = Number(document.getElementById('maxInput').value)||90;
+  const mondayISO_ = mondayOf(weekOffset);
+  const days = Array.from({length:7}, (_,i)=> addDaysISO(mondayISO_, i));
+
+  // Build day loads
+  const dayLoad = new Map(days.map(d=>[d,0]));
+  tasks.forEach(t=>{ if(days.includes(t.nextDue)) dayLoad.set(t.nextDue, (dayLoad.get(t.nextDue)||0) + (Number(t.duration)||0)); });
+
+  // Move tasks from overloaded days to nearest underloaded day (greedy)
+  // NOTE: only forward within the same week to keep it predictable
+  const byDate = tasks.filter(t=>days.includes(t.nextDue)).sort((a,b)=> (Number(b.duration)||0) - (Number(a.duration)||0));
+  for(const t of byDate){
+    let cur = t.nextDue; let loadCur = dayLoad.get(cur)||0;
+    if(loadCur <= maxCap) continue;
+    // find best day within week with minimal load < target
+    let bestDay = cur; let bestDelta = Infinity;
+    for(const d of days){
+      const l = dayLoad.get(d)||0;
+      if(l + (Number(t.duration)||0) <= maxCap){ // respect cap
+        const delta = Math.abs(days.indexOf(d) - days.indexOf(cur));
+        if(l < target && delta < bestDelta){ bestDelta = delta; bestDay = d; }
+      }
+    }
+    if(bestDay !== cur){
+      // move
+      dayLoad.set(cur, (dayLoad.get(cur)||0) - (Number(t.duration)||0));
+      dayLoad.set(bestDay, (dayLoad.get(bestDay)||0) + (Number(t.duration)||0));
+      t.nextDue = bestDay;
+    }
+  }
+  saveAll();
+}
+
+/*************************************************************
+ * CRUD TASKS & SELECTORS
+ *************************************************************/
+function refreshSelectors(){
+  const editSel = document.getElementById('editSel');
+  const delSel = document.getElementById('delSel');
+  editSel.innerHTML = ''; delSel.innerHTML = '';
+  tasks.forEach((t,i)=>{
+    const o1 = document.createElement('option'); o1.value = i; o1.textContent = t.name; editSel.appendChild(o1);
+    const o2 = document.createElement('option'); o2.value = i; o2.textContent = t.name; delSel.appendChild(o2);
+  });
+}
+
+function recomputeNextDue(task){ if(!task.nextDue){ task.nextDue = todayISO(); } }
+
+/*************************************************************
+ * EXPORT/IMPORT/CLEAR
+ *************************************************************/
+function exportJSON(){
+  const data = { tasks, absences, logs, prefs };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'organisation-familiale.json'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importJSON(){
+  const inp = document.createElement('input'); inp.type='file'; inp.accept='.json,application/json';
+  inp.onchange = async ()=>{
+    const file = inp.files[0]; if(!file) return;
+    const txt = await file.text();
+    try{ const data = JSON.parse(txt); tasks = data.tasks||[]; absences = data.absences||[]; logs = data.logs||[]; prefs = data.prefs||{}; saveAll(); refreshSelectors(); renderAll(); }
+    catch(e){ alert('JSON invalide'); }
+  };
+  inp.click();
+}
+
+function clearAll(){ if(confirm('Effacer toutes les données locales ?')){ tasks=[]; absences=[]; logs=[]; prefs={}; saveAll(); refreshSelectors(); renderAll(); } }
+
+/*************************************************************
+ * INIT UI + EVENTS
+ *************************************************************/
 function renderAll(){
-  // Recompute defaults for tasks without nextDue
   tasks.forEach(recomputeNextDue);
   saveAll();
   renderWeek();
@@ -549,13 +661,22 @@ function renderAll(){
 }
 
 function initUI(){
+  // Theme
+  if(prefs.theme==='dark') document.body.classList.add('dark');
+
+  // Prefs restore
+  if(prefs.target) document.getElementById('targetInput').value = prefs.target;
+  if(prefs.maxCap) document.getElementById('maxInput').value = prefs.maxCap;
+  if(prefs.eventsWeight) document.getElementById('eventsWeight').value = prefs.eventsWeight;
+  if(prefs.auto) document.getElementById('autoChk').checked = !!prefs.auto;
+
   document.getElementById('todayBtn').addEventListener('click', ()=>{ weekOffset=0; renderWeek(); });
   document.getElementById('prevW').addEventListener('click', ()=>{ weekOffset--; renderWeek(); });
   document.getElementById('nextW').addEventListener('click', ()=>{ weekOffset++; renderWeek(); });
 
   const settingsPanel = document.getElementById('settingsPanel');
   document.getElementById('settingsBtn').addEventListener('click', ()=> settingsPanel.classList.toggle('open'));
-  document.getElementById('themeToggle').addEventListener('click', ()=> document.body.classList.toggle('dark'));
+  document.getElementById('themeToggle').addEventListener('click', ()=> { document.body.classList.toggle('dark'); prefs.theme = document.body.classList.contains('dark')? 'dark':'light'; saveAll(); });
 
   const statsPanel = document.getElementById('statsPanel');
   document.getElementById('statsBtn').addEventListener('click', ()=> { statsPanel.classList.toggle('open'); renderStats(); });
@@ -567,20 +688,19 @@ function initUI(){
   document.getElementById('prevM').addEventListener('click', ()=>{ const d=new Date(monthCursor); d.setMonth(d.getMonth()-1); monthCursor=toISODateLocal(d); renderMonth(); });
   document.getElementById('nextM').addEventListener('click', ()=>{ const d=new Date(monthCursor); d.setMonth(d.getMonth()+1); monthCursor=toISODateLocal(d); renderMonth(); });
 
-  // CRUD tâches
+  // CRUD tasks
   document.getElementById('addBtn').addEventListener('click', ()=>{
     const name = document.getElementById('addName').value.trim();
     const duration = Number(document.getElementById('addDur').value)||0;
     const freq = Math.max(1, Number(document.getElementById('addFreq').value)||7);
     if(!name) return;
-    tasks.push({ name, duration, freq, nextDue: todayISO() });
+    tasks.push({ id: uid(), name, duration, freq, nextDue: todayISO() });
     saveAll(); refreshSelectors(); renderAll();
     document.getElementById('addName').value='';
   });
 
   document.getElementById('editSel').addEventListener('change', (e)=>{
-    const t = tasks[e.target.value];
-    if(!t) return;
+    const t = tasks[e.target.value]; if(!t) return;
     document.getElementById('editName').value = t.name;
     document.getElementById('editDur').value = t.duration;
     document.getElementById('editFreq').value = t.freq;
@@ -603,25 +723,44 @@ function initUI(){
     saveAll(); refreshSelectors(); renderAll();
   });
 
-  // Répartition auto (placeholder simple: pousse les échéances tombant un jour d'absence au jour suivant)
-  document.getElementById('autoBtn').addEventListener('click', ()=>{
-    tasks.forEach(t=>{
-      while(absences.includes(t.nextDue)){
-        t.nextDue = addDaysISO(t.nextDue, 1);
-      }
-    });
-    saveAll(); renderAll();
-  });
+  // Auto distribution
+  document.getElementById('autoBtn').addEventListener('click', ()=>{ distributeWeek(); renderAll(); });
+
+  // Recompute when objectives change
+  document.getElementById('targetInput').addEventListener('input', ()=>{ prefs.target = Number(document.getElementById('targetInput').value)||75; saveAll(); renderWeek(); });
+  document.getElementById('maxInput').addEventListener('input', ()=>{ prefs.maxCap = Number(document.getElementById('maxInput').value)||90; saveAll(); renderWeek(); });
+  document.getElementById('eventsWeight').addEventListener('change', ()=>{ prefs.eventsWeight = document.getElementById('eventsWeight').value; saveAll(); renderWeek(); });
+  document.getElementById('autoChk').addEventListener('change', (e)=>{ prefs.auto = e.target.checked; saveAll(); });
+
+  // Data ops
+  document.getElementById('exportBtn').addEventListener('click', exportJSON);
+  document.getElementById('importBtn').addEventListener('click', importJSON);
+  document.getElementById('clearBtn').addEventListener('click', clearAll);
 
   refreshSelectors();
 }
 
-/******************** Boot *************************/
+/*************************************************************
+ * BOOT
+ *************************************************************/
 (function boot(){
+  // Demo data if empty
+  if(tasks.length===0){
+    tasks = [
+      { id: uid(), name:'Vaisselle', duration:30, freq:1, nextDue: todayISO() },
+      { id: uid(), name:'Lessive', duration:45, freq:3, nextDue: addDaysISO(todayISO(),1) },
+      { id: uid(), name:'Courses', duration:60, freq:7, nextDue: addDaysISO(todayISO(),2) },
+      { id: uid(), name:'Aspirateur', duration:25, freq:4, nextDue: addDaysISO(todayISO(),1) },
+      { id: uid(), name:'Salle de bain', duration:40, freq:7, nextDue: addDaysISO(todayISO(),3) },
+      { id: uid(), name:'Poubelles', duration:15, freq:2, nextDue: todayISO() },
+      { id: uid(), name:'Cuisine', duration:35, freq:5, nextDue: addDaysISO(todayISO(),4) },
+      { id: uid(), name:'Arrosage plantes', duration:20, freq:3, nextDue: addDaysISO(todayISO(),5) },
+      { id: uid(), name:'Litière', duration:15, freq:3, nextDue: addDaysISO(todayISO(),6) }
+    ];
+  }
   initUI();
-  renderAll(); // affichage initial (events viendront ensuite)
+  renderAll(); // events will arrive after GIS token
 })();
 </script>
-
 </body>
 </html>
