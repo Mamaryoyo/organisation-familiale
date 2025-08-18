@@ -2,24 +2,31 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Organisation familiale — version complète (GIS + fixes + jauge)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Organisation familiale — vMax (GIS + jauge + filtres Y/M) — Partie 1/2</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<!-- Chart.js for stats -->
+<!-- Chart.js (chargé async dans la partie 2) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" async></script>
 <!-- Google Identity Services (auth) + gapi client (Calendar API) -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js" async defer></script>
 <style>
-  /********************************************************************
-  * THEME & TOKENS
-  ********************************************************************/
+  /*****************************************************************************************************************
+   * THEME & TOKENS
+   * ----------------------------------------------------------------------------------------------------------------
+   * Palette + tokens utilisés partout. Les variables sont sur :root et swap avec .dark.
+   * Ajout de variables pour états, fonds, etc.
+   *****************************************************************************************************************/
   :root{
     --bg:#f6f7f9; --panel:#ffffff; --text:#1f2937; --muted:#6b7280; --line:#e5e7eb;
     --blue:#2563eb; --yellow:#facc15; --green:#22c55e; --orange:#f59e0b; --red:#ef4444;
+    --indigo:#6366f1; --teal:#14b8a6; --pink:#ec4899;
     --red-soft:#fee2e2; --red-soft-dark:rgba(239,68,68,.15);
     --card:#ffffff; --card-soft:#f3f4f6; --shadow:0 1px 3px rgba(0,0,0,.08);
     --ring: 0 0 0 2px rgba(37,99,235,.35);
+    --focus-ring: 0 0 0 3px rgba(99,102,241,.4);
+    --success-ring: 0 0 0 3px rgba(34,197,94,.35);
+    --warning-ring: 0 0 0 3px rgba(245,158,11,.35);
   }
   body.dark{
     --bg:#1f1f23; --panel:#2b2b31; --text:#e5e5e5; --muted:#9ca3af; --line:#3b3b45;
@@ -27,9 +34,9 @@
     --ring: 0 0 0 2px rgba(99,102,241,.45);
   }
 
-  /********************************************************************
-  * BASE
-  ********************************************************************/
+  /*****************************************************************************************************************
+   * BASE
+   *****************************************************************************************************************/
   *{box-sizing:border-box}
   html,body{height:100%}
   body{
@@ -38,12 +45,16 @@
     transition:background .3s,color .3s;
   }
   button{font:inherit}
-  button:focus{outline:none; box-shadow:var(--ring);}
-  a{color:inherit}
+  button:focus{outline:none; box-shadow:var(--ring);} /* Ring accessible */
+  a{color:inherit; text-decoration:none}
 
-  /********************************************************************
-  * LAYOUT
-  ********************************************************************/
+  /* Utilitaires */
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .visually-hidden{clip:rect(0 0 0 0);clip-path:inset(50%);height:1px;overflow:hidden;position:absolute;white-space:nowrap;width:1px}
+
+  /*****************************************************************************************************************
+   * LAYOUT
+   *****************************************************************************************************************/
   .app{display:flex; flex:1; width:100%; height:100%;}
   .left{flex:2; display:flex; flex-direction:column; border-right:1px solid var(--line); min-width:640px;}
   .right{flex:1; display:flex; flex-direction:column; min-width:360px;}
@@ -56,12 +67,13 @@
   .bar-right{display:flex; align-items:center; gap:8px}
   .btn{background:var(--panel); border:1px solid var(--line); padding:6px 10px; border-radius:8px; cursor:pointer; box-shadow:var(--shadow); color:var(--text)}
   .btn:hover{filter:brightness(0.98)}
+  .btn.active{box-shadow:0 0 0 2px rgba(37,99,235,.25) inset; font-weight:600}
   .icon{background:var(--panel); border:1px solid var(--line); padding:6px 10px; border-radius:8px; cursor:pointer; font-size:18px; line-height:1; box-shadow:var(--shadow); color:var(--text)}
 
-  /********************************************************************
-  * WEEK VIEW — fixed height + columns gauge
-  ********************************************************************/
-  .week-wrap{flex:none; height:620px; overflow:auto; background:var(--panel)}
+  /*****************************************************************************************************************
+   * WEEK VIEW — hauteur fixe + jauges par colonne
+   *****************************************************************************************************************/
+  .week-wrap{flex:none; height:640px; overflow:auto; background:var(--panel)}
   .week-view{display:flex; gap:8px; padding:12px; transform:translateX(0); transition:transform .35s ease; height:100%}
   .day{flex:1; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; display:flex; flex-direction:column; align-items:stretch; box-shadow:var(--shadow); min-width:0; height:100%}
   .day-head{display:flex; flex-direction:column; align-items:center; margin-bottom:8px}
@@ -81,9 +93,9 @@
   .load-fill{height:100%; border-radius:999px; width:0}
   .tick{position:absolute; top:50%; transform:translateY(-50%); width:2px; height:8px; background:var(--muted); opacity:.35}
 
-  /********************************************************************
-  * MONTH (absences)
-  ********************************************************************/
+  /*****************************************************************************************************************
+   * MONTH (absences) — repliable sous la semaine
+   *****************************************************************************************************************/
   .month{background:var(--panel); border-top:1px solid var(--line); padding:10px 12px; display:none}
   .month-top{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:6px}
   .month-title{font-weight:600; flex:1; text-align:center}
@@ -95,15 +107,15 @@
   .cell.wknd{background:var(--card-soft); color:var(--muted)}
   .cell.abs{background:var(--red); color:#fff; border-color:var(--red)}
 
-  /********************************************************************
-  * RIGHT — Upcoming tasks grid
-  ********************************************************************/
+  /*****************************************************************************************************************
+   * RIGHT — 9 prochaines tâches
+   *****************************************************************************************************************/
   .right-head{padding:12px 14px; background:var(--panel); border-bottom:1px solid var(--line)}
   .tasks{flex:1; padding:12px; display:grid; grid-template-columns:repeat(3,1fr); gap:10px; overflow:auto}
   .card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; text-align:center; box-shadow:var(--shadow); cursor:pointer; transition:transform .12s ease, opacity .25s ease}
   .card:hover{transform:translateY(-1px)}
   .card.fade{opacity:0; transform:scale(.9)}
-  .name{font-weight:600; font-size:14px; margin:0}
+  .name{font-weight:600; font-size:14px; margin:0; display:flex; align-items:center; gap:8px; justify-content:center}
   .meta{font-size:12px; color:var(--muted); margin-top:4px}
   .days{font-weight:800; font-size:26px; margin-top:6px}
   .upcoming{background:var(--card-soft)}
@@ -111,21 +123,21 @@
   .late{background:var(--red-soft); border-color:var(--red)}
   body.dark .late{background:var(--red-soft-dark); border-color:var(--red); color:#fca5a5}
 
-  /********************************************************************
-  * MODAL
-  ********************************************************************/
+  /*****************************************************************************************************************
+   * MODAL (validation qui)
+   *****************************************************************************************************************/
   .modal{position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.45); backdrop-filter:blur(6px); z-index:20}
-  .dialog{background:var(--panel); color:var(--text); padding:18px; border-radius:12px; width:min(380px,90vw); box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .dialog{background:var(--panel); color:var(--text); padding:18px; border-radius:12px; width:min(420px,92vw); box-shadow:0 10px 30px rgba(0,0,0,.25)}
   .dialog h3{margin:0 0 12px 0; font-size:16px; font-weight:600; text-align:center}
   .who{display:flex; gap:10px}
   .wbtn{flex:1; padding:10px; border-radius:10px; border:none; cursor:pointer; font-weight:700}
   .wbtn.yonice{background:var(--blue); color:#fff}
   .wbtn.marine{background:var(--yellow); color:#333}
 
-  /********************************************************************
-  * PANELS (settings & stats)
-  ********************************************************************/
-  .panel{position:fixed; top:0; right:-420px; width:420px; height:100%; background:var(--panel); border-left:1px solid var(--line); box-shadow:-4px 0 12px rgba(0,0,0,.12); transition:right .28s ease; z-index:25; display:flex; flex-direction:column}
+  /*****************************************************************************************************************
+   * PANELS (paramètres & stats)
+   *****************************************************************************************************************/
+  .panel{position:fixed; top:0; right:-460px; width:460px; height:100%; background:var(--panel); border-left:1px solid var(--line); box-shadow:-4px 0 12px rgba(0,0,0,.12); transition:right .28s ease; z-index:25; display:flex; flex-direction:column}
   .panel.open{right:0}
   .p-head{padding:14px; border-bottom:1px solid var(--line); font-weight:700}
   .p-body{padding:14px; overflow:auto; display:flex; flex-direction:column; gap:12px}
@@ -136,25 +148,31 @@
   .row > *{flex:1}
   .chart{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; box-shadow:var(--shadow)}
 
-  /********************************************************************
-  * RESPONSIVE
-  ********************************************************************/
+  /*****************************************************************************************************************
+   * RESPONSIVE + gestion panneau d'absences
+   *****************************************************************************************************************/
   @media (max-width:1200px){ .left{min-width:520px} }
   @media (max-width:980px){ .left{min-width:0} .right{min-width:0} .tasks{grid-template-columns:repeat(2,1fr)} }
   @media (max-width:720px){ .app{flex-direction:column} .tasks{grid-template-columns:1fr} }
 
-  /* ABS view toggle: shrink week when abs panel open */
+  /* Réduction automatique de la semaine quand le panneau d'absences est ouvert */
   .left.abs-open .week-wrap{height:360px}
   .left.abs-open .month{display:block}
 
-  /* Who badge */
+  /* Pastille Y/M (qui a fait en dernier) */
   .who-badge{display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; width:18px; height:18px; border-radius:999px; margin-left:auto; border:1px solid var(--line)}
   .who-badge.y{background:rgba(37,99,235,.12); color:#1e3a8a}
   .who-badge.m{background:rgba(250,204,21,.25); color:#854d0e}
-}
- }
-  @media (max-width:980px){ .left{min-width:0} .right{min-width:0} .tasks{grid-template-columns:repeat(2,1fr)} }
-  @media (max-width:720px){ .app{flex-direction:column} .tasks{grid-template-columns:1fr} }
+
+  /*****************************************************************************************************************
+   * Impression (optionnel)
+   *****************************************************************************************************************/
+  @media print{
+    body{background:#fff}
+    .panel, .modal, .right-head, #settingsBtn, #statsBtn, #absenceBtn{display:none!important}
+    .left{min-width:0!important}
+    .week-wrap{height:auto!important; overflow:visible}
+  }
 </style>
 </head>
 <body>
@@ -171,6 +189,12 @@
           <button class="btn" id="todayBtn" title="Revenir à aujourd’hui" aria-label="Aujourd’hui">Aujourd’hui</button>
           <button class="btn" id="nextW" title="Semaine suivante" aria-label="Semaine suivante">›</button>
           <button class="btn" id="autoBtn" title="Répartir la semaine" aria-label="Répartition auto">↔️</button>
+          <!-- Filtres Y/M rapides -->
+          <div class="who-filter" style="display:flex;gap:6px;margin-left:6px">
+            <button class="btn" id="whoAll" title="Toutes les tâches">All</button>
+            <button class="btn" id="whoY" title="Tâches de Yonice">Y</button>
+            <button class="btn" id="whoM" title="Tâches de Marine">M</button>
+          </div>
           <button class="icon" id="absenceBtn" title="Absences" aria-label="Absences">💼</button>
           <button class="icon" id="statsBtn" title="Statistiques" aria-label="Statistiques">📈</button>
           <button class="icon" id="settingsBtn" title="Paramètres" aria-label="Paramètres">⚙️</button>
@@ -239,6 +263,20 @@
           </select>
         </div>
       </div>
+      <div class="row">
+        <div><label>Masquer les week-ends</label>
+          <select id="hideWeekends">
+            <option value="no">Afficher</option>
+            <option value="yes">Masquer</option>
+          </select>
+        </div>
+        <div><label>Rappels clavier (A/Y/M/T)</label>
+          <select id="kbdHints">
+            <option value="on">Activer</option>
+            <option value="off">Désactiver</option>
+          </select>
+        </div>
+      </div>
       <hr>
       <div style="font-weight:600">➕ Ajouter une tâche</div>
       <div class="row">
@@ -286,17 +324,24 @@
     </div>
   </div>
 
+  <!--
+    ==========================
+    =  SCRIPT — PARTIE 1/2  =
+    ==========================
+    NOTE: Cette partie contient toute la configuration, les utilitaires, l'état, et une portion des fonctions.
+    La partie 2/2 continue le script et referme la page HTML.
+  -->
 <script>
-/*************************************************************
+/***************************************************
  * CONFIG — Google API (Calendar) via GIS
- *************************************************************/
+ ***************************************************/
 const CLIENT_ID = "691551955911-i6mhvllgop4f1u5q2k144tmqvt6q2pei.apps.googleusercontent.com";
 const SCOPES    = "https://www.googleapis.com/auth/calendar.readonly";
 let tokenClient; // GIS token client
 let gapiInited = false; let gisInited = false;
 let events = []; // Google Calendar events
 
-// load gapi client
+// Chargement du client gapi + demande de token via GIS
 window.addEventListener('load', () => {
   if (window.gapi){
     gapi.load('client', async () => {
@@ -319,7 +364,7 @@ window.addEventListener('load', () => {
       gisInited = true; maybeEnable();
       clearInterval(iv);
     }
-  }, 50);
+  }, 60);
 });
 
 function maybeEnable(){ if (gapiInited && gisInited){ tokenClient.requestAccessToken({ prompt:'consent' }); } }
@@ -339,13 +384,13 @@ async function listEvents(){
   }catch(e){ console.warn('Erreur events', e); }
 }
 
-/*************************************************************
+/***************************************************
  * STORAGE & DATA
- *************************************************************/
-const TASKS_KEY='tasks_v7';
-const ABS_KEY='absences_v7';
-const LOGS_KEY='logs_v7';
-const PREF_KEY='prefs_v7';
+ ***************************************************/
+const TASKS_KEY='tasks_v8';
+const ABS_KEY='absences_v8';
+const LOGS_KEY='logs_v8';
+const PREF_KEY='prefs_v8';
 
 let tasks = JSON.parse(localStorage.getItem(TASKS_KEY) || '[]');
 let absences = JSON.parse(localStorage.getItem(ABS_KEY) || '[]'); // ["YYYY-MM-DD", ...]
@@ -359,9 +404,9 @@ function saveAll(){
   localStorage.setItem(PREF_KEY, JSON.stringify(prefs));
 }
 
-/*************************************************************
- * DATE UTILS
- *************************************************************/
+/***************************************************
+ * DATE UTILS (local + ISO jour)
+ ***************************************************/
 const pad = n => String(n).padStart(2,'0');
 const toISODateLocal = (d)=>{ const x = new Date(d); const y = new Date(x.getFullYear(), x.getMonth(), x.getDate()); return `${y.getFullYear()}-${pad(y.getMonth()+1)}-${pad(y.getDate())}`; };
 const todayISO = () => toISODateLocal(new Date());
@@ -372,16 +417,34 @@ const frDate = d => new Date(d).toLocaleDateString('fr-FR',{day:'numeric',month:
 function getWeekNumber(d){ d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const dayNum = d.getUTCDay() || 7; d.setUTCDate(d.getUTCDate() + 4 - dayNum); const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1)); return Math.ceil((((d - yearStart) / 86400000) + 1) / 7); }
 const isWeekend = iso => { const wd = new Date(iso).getDay(); return wd===0 || wd===6; };
 
-/*************************************************************
+/***************************************************
  * HELPERS
- *************************************************************/
+ ***************************************************/
 function uid(){ return Math.random().toString(36).slice(2,10); }
 function groupByDate(items, getDateStr){ const map = new Map(); for(const it of items){ const k = getDateStr(it); if(!map.has(k)) map.set(k, []); map.get(k).push(it);} return map; }
 function minutesBetween(start, end){ const s = new Date(start).getTime(); const e = new Date(end).getTime(); if(!isFinite(s)||!isFinite(e)|| e<=s) return 0; return Math.round((e-s)/60000); }
 
-/*************************************************************
- * UI BUILDERS
- *************************************************************/
+/***************************************************
+ * WHO FILTER — état global + helpers UI
+ ***************************************************/
+let whoFilter = 'all';
+function applyWhoFilterUI(){
+  const a=document.getElementById('whoAll'); const y=document.getElementById('whoY'); const m=document.getElementById('whoM');
+  if(!a||!y||!m) return;
+  a.classList.toggle('active', whoFilter==='all');
+  y.classList.toggle('active', whoFilter==='y');
+  m.classList.toggle('active', whoFilter==='m');
+}
+function setWhoFilter(f){
+  whoFilter = f; prefs.whoFilter=f; saveAll();
+  applyWhoFilterUI();
+  renderWeek();
+  rebuildUpcoming();
+}
+
+/***************************************************
+ * UI BUILDERS (pills, etc.)
+ ***************************************************/
 function makePill(text, classes=[], badgeText, who){
   const d = document.createElement('div'); d.className = 'pill ' + classes.join(' ');
   const left = document.createElement('span'); left.textContent = text; d.appendChild(left);
@@ -390,11 +453,141 @@ function makePill(text, classes=[], badgeText, who){
   return d;
 }
 
-/*************************************************************
- * WEEK RENDERING with fixed height and per-column gauge
- *************************************************************/
-let weekOffset = 0;
+/***************************************************
+ * ÉTAT DERNIER QUI (lastWhoMap) — construit depuis logs
+ ***************************************************/
+let lastWhoMap = new Map();
+function rebuildLastWhoMap(){
+  lastWhoMap = new Map();
+  for(let i=logs.length-1;i>=0;i--){
+    const l = logs[i];
+    if(!lastWhoMap.has(l.taskId)) lastWhoMap.set(l.taskId, l.who);
+  }
+}
 
+/***************************************************
+ * RENDER ALL — appele les sous-rendus
+ ***************************************************/
+function renderAll(){
+  tasks.forEach(recomputeNextDue);
+  rebuildLastWhoMap();
+  saveAll();
+  renderWeek();
+  rebuildUpcoming();
+}
+
+/***************************************************
+ * PLACEHOLDERS (les fonctions continuent dans la partie 2)
+ ***************************************************/
+function renderWeek(){ /* défini dans PARTIE 2 */ }
+function rebuildUpcoming(){ /* défini dans PARTIE 2 */ }
+function openModal(taskIndex){ /* défini dans PARTIE 2 */ }
+function renderMonth(){ /* défini dans PARTIE 2 */ }
+function renderStats(){ /* défini dans PARTIE 2 */ }
+function distributeWeek(){ /* défini dans PARTIE 2 */ }
+function refreshSelectors(){ /* défini dans PARTIE 2 */ }
+function recomputeNextDue(task){ if(!task.nextDue){ task.nextDue = todayISO(); } }
+function exportJSON(){ /* défini dans PARTIE 2 */ }
+function importJSON(){ /* défini dans PARTIE 2 */ }
+function clearAll(){ /* défini dans PARTIE 2 */ }
+
+/***************************************************
+ * INIT UI + EVENTS (partiellement ici, fin en PARTIE 2)
+ ***************************************************/
+function initUI(){
+  // Thème
+  if(prefs.theme==='dark') document.body.classList.add('dark');
+
+  // Restauration préférences
+  if(prefs.target) document.getElementById('targetInput').value = prefs.target;
+  if(prefs.maxCap) document.getElementById('maxInput').value = prefs.maxCap;
+  if(prefs.eventsWeight) document.getElementById('eventsWeight').value = prefs.eventsWeight;
+  if(prefs.hideWeekends) document.getElementById('hideWeekends').value = prefs.hideWeekends;
+  if(prefs.kbdHints) document.getElementById('kbdHints').value = prefs.kbdHints;
+  if(prefs.auto) document.getElementById('autoChk').checked = !!prefs.auto;
+  whoFilter = prefs.whoFilter || 'all';
+  applyWhoFilterUI();
+
+  // Nav semaine
+  document.getElementById('todayBtn').addEventListener('click', ()=>{ weekOffset=0; renderWeek(); });
+  document.getElementById('prevW').addEventListener('click', ()=>{ weekOffset--; saveWeekOffset(); renderWeek(); });
+  document.getElementById('nextW').addEventListener('click', ()=>{ weekOffset++; saveWeekOffset(); renderWeek(); });
+
+  // Panneaux
+  const settingsPanel = document.getElementById('settingsPanel');
+  document.getElementById('settingsBtn').addEventListener('click', ()=> settingsPanel.classList.toggle('open'));
+  document.getElementById('themeToggle').addEventListener('click', ()=> { document.body.classList.toggle('dark'); prefs.theme = document.body.classList.contains('dark')? 'dark':'light'; saveAll(); });
+
+  const statsPanel = document.getElementById('statsPanel');
+  document.getElementById('statsBtn').addEventListener('click', ()=> { statsPanel.classList.toggle('open'); renderStats(); });
+  document.getElementById('statsFilter').addEventListener('change', renderStats);
+
+  // Absences : les handlers précis sont ajoutés en PARTIE 2 pour garder la continuité de code
+
+  // WHO Filter boutons
+  document.getElementById('whoAll').addEventListener('click', ()=> setWhoFilter('all'));
+  document.getElementById('whoY').addEventListener('click', ()=> setWhoFilter('y'));
+  document.getElementById('whoM').addEventListener('click', ()=> setWhoFilter('m'));
+
+  // Objectifs / prefs live
+  document.getElementById('targetInput').addEventListener('input', ()=>{ prefs.target = Number(document.getElementById('targetInput').value)||75; saveAll(); renderWeek(); });
+  document.getElementById('maxInput').addEventListener('input', ()=>{ prefs.maxCap = Number(document.getElementById('maxInput').value)||90; saveAll(); renderWeek(); });
+  document.getElementById('eventsWeight').addEventListener('change', ()=>{ prefs.eventsWeight = document.getElementById('eventsWeight').value; saveAll(); renderWeek(); });
+  document.getElementById('hideWeekends').addEventListener('change', ()=>{ prefs.hideWeekends = document.getElementById('hideWeekends').value; saveAll(); renderWeek(); });
+  document.getElementById('kbdHints').addEventListener('change', ()=>{ prefs.kbdHints = document.getElementById('kbdHints').value; saveAll(); });
+  document.getElementById('autoChk').addEventListener('change', (e)=>{ prefs.auto = e.target.checked; saveAll(); });
+
+  // Données
+  document.getElementById('exportBtn').addEventListener('click', exportJSON);
+  document.getElementById('importBtn').addEventListener('click', importJSON);
+  document.getElementById('clearBtn').addEventListener('click', clearAll);
+
+  refreshSelectors();
+}
+
+/***************************************************
+ * PERSISTENCE DE LA POSITION SEMAINE
+ ***************************************************/
+let weekOffset = Number(localStorage.getItem('weekOffset')||0) || 0;
+function saveWeekOffset(){ localStorage.setItem('weekOffset', String(weekOffset)); }
+
+/***************************************************
+ * BOOT (partagé)
+ ***************************************************/
+(function boot(){
+  // Données de démonstration si vide
+  if(tasks.length===0){
+    tasks = [
+      { id: uid(), name:'Vaisselle', duration:30, freq:1, nextDue: todayISO() },
+      { id: uid(), name:'Lessive', duration:45, freq:3, nextDue: addDaysISO(todayISO(),1) },
+      { id: uid(), name:'Courses', duration:60, freq:7, nextDue: addDaysISO(todayISO(),2) },
+      { id: uid(), name:'Aspirateur', duration:25, freq:4, nextDue: addDaysISO(todayISO(),1) },
+      { id: uid(), name:'Salle de bain', duration:40, freq:7, nextDue: addDaysISO(todayISO(),3) },
+      { id: uid(), name:'Poubelles', duration:15, freq:2, nextDue: todayISO() },
+      { id: uid(), name:'Cuisine', duration:35, freq:5, nextDue: addDaysISO(todayISO(),4) },
+      { id: uid(), name:'Arrosage plantes', duration:20, freq:3, nextDue: addDaysISO(todayISO(),5) },
+      { id: uid(), name:'Litière', duration:15, freq:3, nextDue: addDaysISO(todayISO(),6) }
+    ];
+  }
+  initUI();
+  renderAll(); // les events arrivent après GIS token
+})();
+</script>
+<!--
+  ===== FIN PARTIE 1/2 =====
+  Ouvre maintenant la PARTIE 2/2 et colle-la à la suite de ce fichier pour exécuter en local.
+-->
+<!--
+  ==========================
+  =  SCRIPT — PARTIE 2/2  =
+  ==========================
+  Cette partie complète le script en définissant toutes les fonctions laissées en placeholders dans la PARTIE 1/2.
+  Pour exécuter la page dans le canvas, vous pouvez aussi copier/coller les deux parties dans un même fichier.
+-->
+<script>
+/***************************************************
+ * RENDER SEMAINE — hauteur fixe + jauges + filtre Y/M
+ ***************************************************/
 function renderWeek(){
   const weekView = document.getElementById('weekView');
   weekView.innerHTML = '';
@@ -406,38 +599,44 @@ function renderWeek(){
   document.getElementById('weekTitle').textContent = `Semaine ${wkNum}`;
   document.getElementById('weekSub').textContent = `${frDate(monday)} – ${frDate(sunday)}`;
 
-  // Settings
+  // Settings courants
   const target = Number(document.getElementById('targetInput').value)||75;
   const maxCap = Number(document.getElementById('maxInput').value)||90;
   const eventsWeight = document.getElementById('eventsWeight').value; // '0' | 'dur' | '30' | '60'
+  const hideWeekends = (document.getElementById('hideWeekends').value||'no') === 'yes';
 
   // Index
-  const eventsByDate = groupByDate(events, ev => toISODateLocal(ev.start.date || ev.start.dateTime));
+  const evByDate = groupByDate(events, ev => toISODateLocal(ev.start?.date || ev.start?.dateTime));
   const tasksByDate = groupByDate(tasks.filter(t=>t.nextDue), t => t.nextDue);
 
   const frag = document.createDocumentFragment();
   for(let i=0;i<7;i++){
     const dISO = addDaysISO(mondayISO_, i);
+    const wd = new Date(dISO).getDay(); // 0..6 (dim..sam)
+    if(hideWeekends && (wd===0 || wd===6)) continue; // skip weekends
+
     const day = document.createElement('div'); day.className = 'day';
     if(absences.includes(dISO)) day.classList.add('absent');
 
     const head = document.createElement('div'); head.className = 'day-head';
-    const wd = document.createElement('div'); wd.className='weekday'; wd.textContent = frDay(dISO);
+    const wdEl = document.createElement('div'); wdEl.className='weekday'; wdEl.textContent = frDay(dISO);
     const dt = document.createElement('div'); dt.className='date'; dt.textContent = frDate(dISO);
-    head.appendChild(wd); head.appendChild(dt); day.appendChild(head);
+    head.appendChild(wdEl); head.appendChild(dt); day.appendChild(head);
 
     let total = 0;
 
-    // Local tasks
+    // Tâches locales filtrées par whoFilter
     (tasksByDate.get(dISO)||[]).forEach(t=>{
+      const lastWho = lastWhoMap.get(t.id) ?? lastWhoMap.get(tasks.indexOf(t)); // compat anciens logs
+      if(whoFilter==='y' && lastWho!=='Yonice') return;
+      if(whoFilter==='m' && lastWho!=='Marine') return;
       total += Number(t.duration)||0;
-      const lastWho = lastWhoMap.get(t.id) ?? lastWhoMap.get(tasks.indexOf(t)); // support legacy index logs
       const p = makePill(t.name, [], `${t.duration||0}m`, lastWho);
       day.appendChild(p);
     });
 
-    // Calendar events
-    (eventsByDate.get(dISO)||[]).forEach(ev=>{
+    // Événements Google Calendar — pondération configurable
+    (evByDate.get(dISO)||[]).forEach(ev=>{
       const name = ev.summary || '(Sans titre)';
       let add = 0;
       if(eventsWeight==='dur' && ev.start && ev.end && ev.start.dateTime && ev.end.dateTime){ add = minutesBetween(ev.start.dateTime, ev.end.dateTime); }
@@ -446,7 +645,7 @@ function renderWeek(){
       const p = makePill(name, ['event'], add? `${add}m` : undefined); day.appendChild(p);
     });
 
-    // FOOT GAUGE
+    // Pied : jauge
     const foot = document.createElement('div'); foot.className = 'day-foot';
     const chip = document.createElement('div'); chip.className='load-chip'; chip.textContent = `${total} / ${target} min`;
     const bar = document.createElement('div'); bar.className='load-bar';
@@ -459,8 +658,7 @@ function renderWeek(){
     const color = total <= target ? rs.getPropertyValue('--green').trim() : (total <= maxCap ? rs.getPropertyValue('--orange').trim() : rs.getPropertyValue('--red').trim());
     fill.style.background = color;
 
-    // optional tick for target
-    const tick = document.createElement('div'); tick.className='tick'; tick.style.left = Math.min(100, Math.round(100)) + '%'; tick.style.left = (target>0? Math.min(100, (target/target*100)) : 100) + '%';
+    const tick = document.createElement('div'); tick.className='tick'; tick.style.left = (target>0? Math.min(100, (target/target*100)) : 100) + '%';
 
     bar.appendChild(fill); bar.appendChild(tick);
     foot.appendChild(chip); foot.appendChild(bar);
@@ -471,20 +669,28 @@ function renderWeek(){
   weekView.appendChild(frag);
 }
 
-/*************************************************************
- * UPCOMING TASKS GRID
- *************************************************************/
+/***************************************************
+ * 9 PROCHAINES TÂCHES — filtre Y/M appliqué
+ ***************************************************/
 function rebuildUpcoming(){
   const grid = document.getElementById('tasksGrid');
   grid.innerHTML = '';
-  const items = tasks.map((t, idx)=>({ ...t, _idx: idx }))
-    .filter(t=>t.nextDue)
-    .sort((a,b)=> a.nextDue.localeCompare(b.nextDue))
-    .slice(0,9);
+  const itemsAll = tasks.map((t, idx)=>({ ...t, _idx: idx }))
+    .filter(t=>t.nextDue);
+
+  const filtered = itemsAll.filter(t=>{
+    const lw = lastWhoMap.get(t.id) ?? lastWhoMap.get(t._idx);
+    if(whoFilter==='all') return true;
+    if(whoFilter==='y') return lw==='Yonice';
+    if(whoFilter==='m') return lw==='Marine';
+    return true;
+  })
+  .sort((a,b)=> a.nextDue.localeCompare(b.nextDue))
+  .slice(0,9);
 
   const frag = document.createDocumentFragment();
   const today = new Date(todayISO());
-  items.forEach(t=>{
+  filtered.forEach(t=>{
     const card = document.createElement('div');
     const delta = Math.floor((new Date(t.nextDue) - today)/86400000);
     card.className = 'card ' + (delta<0? 'late':'upcoming');
@@ -505,9 +711,9 @@ function rebuildUpcoming(){
   grid.appendChild(frag);
 }
 
-/*************************************************************
- * MODAL VALIDATION + LOGGING
- *************************************************************/
+/***************************************************
+ * MODAL — validation et logging (compat index -> id)
+ ***************************************************/
 function openModal(taskIndex){
   const t = tasks[taskIndex];
   document.getElementById('modalTaskName').textContent = `Qui a fait: ${t.name} ?`;
@@ -516,7 +722,6 @@ function openModal(taskIndex){
   const close = ()=>{ modal.style.display='none'; };
   const validate = who =>{
     logs.push({date: todayISO(), taskId: t.id ?? taskIndex, who, duration: t.duration||0});
-    // Prochaine échéance (base = max(aujourd'hui, nextDue))
     const base = t.nextDue && new Date(t.nextDue) > new Date(todayISO()) ? t.nextDue : todayISO();
     t.nextDue = addDaysISO(base, t.freq||7);
     saveAll();
@@ -529,15 +734,14 @@ function openModal(taskIndex){
   modal.addEventListener('click', (e)=>{ if(e.target===modal) close(); }, { once:true });
 }
 
-/*************************************************************
- * ABSENCES — MONTH VIEW
- *************************************************************/
-let monthCursor = toISODateLocal(new Date()); // any day of current month
-
+/***************************************************
+ * ABSENCES — calendrier mensuel et toggle hauteur
+ ***************************************************/
+let monthCursor = toISODateLocal(new Date());
 function renderMonth(){
   const [Y,M] = monthCursor.split('-').map(Number);
   const first = new Date(Y, M-1, 1);
-  const firstWeekday = (first.getDay()||7); // 1..7, monday=1
+  const firstWeekday = (first.getDay()||7);
   const daysInMonth = new Date(Y, M, 0).getDate();
   const grid = document.getElementById('monthGrid');
   grid.innerHTML = '';
@@ -560,9 +764,28 @@ function renderMonth(){
   }
 }
 
-/*************************************************************
- * STATS (Chart.js)
- *************************************************************/
+// Toggle open/close
+(function wireAbsences(){
+  const absPanel = document.getElementById('absencePanel');
+  document.getElementById('absenceBtn').addEventListener('click', ()=>{
+    const left = document.querySelector('.left');
+    absPanel.style.display='block';
+    left.classList.add('abs-open');
+    renderMonth();
+  });
+  document.getElementById('closeAbs').addEventListener('click', ()=>{
+    const left = document.querySelector('.left');
+    absPanel.style.display='none';
+    left.classList.remove('abs-open');
+    renderWeek();
+  });
+  document.getElementById('prevM').addEventListener('click', ()=>{ const d=new Date(monthCursor); d.setMonth(d.getMonth()-1); monthCursor=toISODateLocal(d); renderMonth(); });
+  document.getElementById('nextM').addEventListener('click', ()=>{ const d=new Date(monthCursor); d.setMonth(d.getMonth()+1); monthCursor=toISODateLocal(d); renderMonth(); });
+})();
+
+/***************************************************
+ * STATS — Chart.js (camembert + barres + courbe)
+ ***************************************************/
 let pieChart, barChart, dailyChart;
 function renderStats(){
   const period = document.getElementById('statsFilter').value; // 'month' | 'year'
@@ -575,53 +798,45 @@ function renderStats(){
   const byDay = {};
   for(const l of filt){ sumByWho[l.who] = (sumByWho[l.who]||0) + (l.duration||0); byDay[l.date] = (byDay[l.date]||0) + (l.duration||0); }
 
-  // Pie
   const pctx = document.getElementById('pie'); if (pieChart) pieChart.destroy();
   pieChart = new Chart(pctx, { type:'pie', data:{ labels:Object.keys(sumByWho), datasets:[{ data:Object.values(sumByWho) }] }, options:{ responsive:true } });
 
-  // Bars (7 derniers jours)
   const labels = []; const data = [];
   for(let i=6;i>=0;i--){ const iso = addDaysISO(todayISO(), -i); labels.push(new Date(iso).toLocaleDateString('fr-FR',{weekday:'short'})); data.push(byDay[iso]||0); }
   const bctx = document.getElementById('bars'); if (barChart) barChart.destroy();
   barChart = new Chart(bctx, { type:'bar', data:{ labels, datasets:[{ label:'Durée (min)', data }] }, options:{ responsive:true } });
 
-  // Daily (charges des 14 derniers jours)
   const labels2 = []; const data2 = [];
   for(let i=13;i>=0;i--){ const iso = addDaysISO(todayISO(), -i); labels2.push(iso.slice(5)); let s=0; const dTasks = tasks.filter(t=>t.nextDue===iso); dTasks.forEach(t=> s+= Number(t.duration)||0); data2.push(s); }
   const dctx = document.getElementById('daily'); if (dailyChart) dailyChart.destroy();
   dailyChart = new Chart(dctx, { type:'line', data:{ labels:labels2, datasets:[{ label:'Charge tâches (min)', data:data2, tension:.3 }] }, options:{ responsive:true } });
 }
 
-/*************************************************************
- * DISTRIBUTION (simple heuristic towards target)
- *************************************************************/
+/***************************************************
+ * DISTRIBUTION — heuristique vers cible (cap max respecté)
+ ***************************************************/
 function distributeWeek(){
   const target = Number(document.getElementById('targetInput').value)||75;
   const maxCap = Number(document.getElementById('maxInput').value)||90;
   const mondayISO_ = mondayOf(weekOffset);
   const days = Array.from({length:7}, (_,i)=> addDaysISO(mondayISO_, i));
 
-  // Build day loads
   const dayLoad = new Map(days.map(d=>[d,0]));
   tasks.forEach(t=>{ if(days.includes(t.nextDue)) dayLoad.set(t.nextDue, (dayLoad.get(t.nextDue)||0) + (Number(t.duration)||0)); });
 
-  // Move tasks from overloaded days to nearest underloaded day (greedy)
-  // NOTE: only forward within the same week to keep it predictable
   const byDate = tasks.filter(t=>days.includes(t.nextDue)).sort((a,b)=> (Number(b.duration)||0) - (Number(a.duration)||0));
   for(const t of byDate){
     let cur = t.nextDue; let loadCur = dayLoad.get(cur)||0;
     if(loadCur <= maxCap) continue;
-    // find best day within week with minimal load < target
     let bestDay = cur; let bestDelta = Infinity;
     for(const d of days){
       const l = dayLoad.get(d)||0;
-      if(l + (Number(t.duration)||0) <= maxCap){ // respect cap
+      if(l + (Number(t.duration)||0) <= maxCap){
         const delta = Math.abs(days.indexOf(d) - days.indexOf(cur));
         if(l < target && delta < bestDelta){ bestDelta = delta; bestDay = d; }
       }
     }
     if(bestDay !== cur){
-      // move
       dayLoad.set(cur, (dayLoad.get(cur)||0) - (Number(t.duration)||0));
       dayLoad.set(bestDay, (dayLoad.get(bestDay)||0) + (Number(t.duration)||0));
       t.nextDue = bestDay;
@@ -630,9 +845,9 @@ function distributeWeek(){
   saveAll();
 }
 
-/*************************************************************
- * CRUD TASKS & SELECTORS
- *************************************************************/
+/***************************************************
+ * CRUD SELECTEURS — remplissage des listes
+ ***************************************************/
 function refreshSelectors(){
   const editSel = document.getElementById('editSel');
   const delSel = document.getElementById('delSel');
@@ -643,11 +858,9 @@ function refreshSelectors(){
   });
 }
 
-function recomputeNextDue(task){ if(!task.nextDue){ task.nextDue = todayISO(); } }
-
-/*************************************************************
- * EXPORT/IMPORT/CLEAR
- *************************************************************/
+/***************************************************
+ * EXPORT / IMPORT / CLEAR
+ ***************************************************/
 function exportJSON(){
   const data = { tasks, absences, logs, prefs };
   const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
@@ -669,139 +882,22 @@ function importJSON(){
 
 function clearAll(){ if(confirm('Effacer toutes les données locales ?')){ tasks=[]; absences=[]; logs=[]; prefs={}; saveAll(); refreshSelectors(); renderAll(); } }
 
-/*************************************************************
- * INIT UI + EVENTS
- *************************************************************/
-let lastWhoMap = new Map();
-function rebuildLastWhoMap(){
-  lastWhoMap = new Map();
-  for(let i=logs.length-1;i>=0;i--){
-    const l = logs[i];
-    if(!lastWhoMap.has(l.taskId)) lastWhoMap.set(l.taskId, l.who);
-  }
-}
-
-function renderAll(){
-  tasks.forEach(recomputeNextDue);
-  rebuildLastWhoMap();
-  saveAll();
-  renderWeek();
-  rebuildUpcoming();
-}
-
-function initUI(){
-  // Theme
-  if(prefs.theme==='dark') document.body.classList.add('dark');
-
-  // Prefs restore
-  if(prefs.target) document.getElementById('targetInput').value = prefs.target;
-  if(prefs.maxCap) document.getElementById('maxInput').value = prefs.maxCap;
-  if(prefs.eventsWeight) document.getElementById('eventsWeight').value = prefs.eventsWeight;
-  if(prefs.auto) document.getElementById('autoChk').checked = !!prefs.auto;
-
-  document.getElementById('todayBtn').addEventListener('click', ()=>{ weekOffset=0; renderWeek(); });
-  document.getElementById('prevW').addEventListener('click', ()=>{ weekOffset--; renderWeek(); });
-  document.getElementById('nextW').addEventListener('click', ()=>{ weekOffset++; renderWeek(); });
-
-  const settingsPanel = document.getElementById('settingsPanel');
-  document.getElementById('settingsBtn').addEventListener('click', ()=> settingsPanel.classList.toggle('open'));
-  document.getElementById('themeToggle').addEventListener('click', ()=> { document.body.classList.toggle('dark'); prefs.theme = document.body.classList.contains('dark')? 'dark':'light'; saveAll(); });
-
-  const statsPanel = document.getElementById('statsPanel');
-  document.getElementById('statsBtn').addEventListener('click', ()=> { statsPanel.classList.toggle('open'); renderStats(); });
-  document.getElementById('statsFilter').addEventListener('change', renderStats);
-
-  const absPanel = document.getElementById('absencePanel');
-  document.getElementById('absenceBtn').addEventListener('click', ()=>{
-  const left = document.querySelector('.left');
-  const absPanel = document.getElementById('absencePanel');
-  absPanel.style.display='block';
-  left.classList.add('abs-open');
-  renderMonth();
-}); });
-  document.getElementById('closeAbs').addEventListener('click', ()=>{
-  const left = document.querySelector('.left');
-  const absPanel = document.getElementById('absencePanel');
-  absPanel.style.display='none';
-  left.classList.remove('abs-open');
-  renderWeek();
-});
-  document.getElementById('prevM').addEventListener('click', ()=>{ const d=new Date(monthCursor); d.setMonth(d.getMonth()-1); monthCursor=toISODateLocal(d); renderMonth(); });
-  document.getElementById('nextM').addEventListener('click', ()=>{ const d=new Date(monthCursor); d.setMonth(d.getMonth()+1); monthCursor=toISODateLocal(d); renderMonth(); });
-
-  // CRUD tasks
-  document.getElementById('addBtn').addEventListener('click', ()=>{
-    const name = document.getElementById('addName').value.trim();
-    const duration = Number(document.getElementById('addDur').value)||0;
-    const freq = Math.max(1, Number(document.getElementById('addFreq').value)||7);
-    if(!name) return;
-    tasks.push({ id: uid(), name, duration, freq, nextDue: todayISO() });
-    saveAll(); refreshSelectors(); renderAll();
-    document.getElementById('addName').value='';
+/***************************************************
+ * ÉVENEMENTS SUPPLÉMENTAIRES (clavier)
+ ***************************************************/
+(function wireKeyboard(){
+  document.addEventListener('keydown', (e)=>{
+    if((prefs.kbdHints||'on')==='off') return;
+    if(e.target && (/^(input|select|textarea)$/i).test(e.target.tagName)) return; // éviter dans champs
+    if(e.key==='y' || e.key==='Y'){ setWhoFilter('y'); }
+    else if(e.key==='m' || e.key==='M'){ setWhoFilter('m'); }
+    else if(e.key==='a' || e.key==='A'){ setWhoFilter('all'); }
+    else if(e.key==='t' || e.key==='T'){ weekOffset=0; saveWeekOffset(); renderWeek(); }
+    else if(e.key==='ArrowLeft'){ weekOffset--; saveWeekOffset(); renderWeek(); }
+    else if(e.key==='ArrowRight'){ weekOffset++; saveWeekOffset(); renderWeek(); }
   });
-
-  document.getElementById('editSel').addEventListener('change', (e)=>{
-    const t = tasks[e.target.value]; if(!t) return;
-    document.getElementById('editName').value = t.name;
-    document.getElementById('editDur').value = t.duration;
-    document.getElementById('editFreq').value = t.freq;
-  });
-
-  document.getElementById('saveEdit').addEventListener('click', ()=>{
-    const i = Number(document.getElementById('editSel').value);
-    const t = tasks[i]; if(!t) return;
-    const name = document.getElementById('editName').value.trim();
-    const duration = Number(document.getElementById('editDur').value)||t.duration;
-    const freq = Math.max(1, Number(document.getElementById('editFreq').value)||t.freq);
-    if(name) t.name = name; t.duration = duration; t.freq = freq;
-    saveAll(); refreshSelectors(); renderAll();
-  });
-
-  document.getElementById('delBtn').addEventListener('click', ()=>{
-    const i = Number(document.getElementById('delSel').value);
-    if(isNaN(i)) return;
-    tasks.splice(i,1);
-    saveAll(); refreshSelectors(); renderAll();
-  });
-
-  // Auto distribution
-  document.getElementById('autoBtn').addEventListener('click', ()=>{ distributeWeek(); renderAll(); });
-
-  // Recompute when objectives change
-  document.getElementById('targetInput').addEventListener('input', ()=>{ prefs.target = Number(document.getElementById('targetInput').value)||75; saveAll(); renderWeek(); });
-  document.getElementById('maxInput').addEventListener('input', ()=>{ prefs.maxCap = Number(document.getElementById('maxInput').value)||90; saveAll(); renderWeek(); });
-  document.getElementById('eventsWeight').addEventListener('change', ()=>{ prefs.eventsWeight = document.getElementById('eventsWeight').value; saveAll(); renderWeek(); });
-  document.getElementById('autoChk').addEventListener('change', (e)=>{ prefs.auto = e.target.checked; saveAll(); });
-
-  // Data ops
-  document.getElementById('exportBtn').addEventListener('click', exportJSON);
-  document.getElementById('importBtn').addEventListener('click', importJSON);
-  document.getElementById('clearBtn').addEventListener('click', clearAll);
-
-  refreshSelectors();
-}
-
-/*************************************************************
- * BOOT
- *************************************************************/
-(function boot(){
-  // Demo data if empty
-  if(tasks.length===0){
-    tasks = [
-      { id: uid(), name:'Vaisselle', duration:30, freq:1, nextDue: todayISO() },
-      { id: uid(), name:'Lessive', duration:45, freq:3, nextDue: addDaysISO(todayISO(),1) },
-      { id: uid(), name:'Courses', duration:60, freq:7, nextDue: addDaysISO(todayISO(),2) },
-      { id: uid(), name:'Aspirateur', duration:25, freq:4, nextDue: addDaysISO(todayISO(),1) },
-      { id: uid(), name:'Salle de bain', duration:40, freq:7, nextDue: addDaysISO(todayISO(),3) },
-      { id: uid(), name:'Poubelles', duration:15, freq:2, nextDue: todayISO() },
-      { id: uid(), name:'Cuisine', duration:35, freq:5, nextDue: addDaysISO(todayISO(),4) },
-      { id: uid(), name:'Arrosage plantes', duration:20, freq:3, nextDue: addDaysISO(todayISO(),5) },
-      { id: uid(), name:'Litière', duration:15, freq:3, nextDue: addDaysISO(todayISO(),6) }
-    ];
-  }
-  initUI();
-  renderAll(); // events will arrive after GIS token
 })();
 </script>
+<!-- FIN PARTIE 2/2 -->
 </body>
 </html>
