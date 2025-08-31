@@ -3,13 +3,14 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Organisation familiale — vMax (GIS + jauge + filtres Y/M) — Partie 1/3</title>
+<title>Organisation familiale</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <!-- Chart.js (chargé async : protégé côté JS dans renderStats) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" async></script>
 <!-- Google Identity Services (auth) + gapi client (Calendar API) -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js" async defer></script>
+
 <style>
   :root{
     --bg:#f6f7f9; --panel:#ffffff; --text:#1f2937; --muted:#6b7280; --line:#e5e7eb;
@@ -61,8 +62,6 @@
   .pill{margin-top:6px; background:var(--panel); border-radius:10px; padding:8px; font-size:12px; border-left:6px solid #ccc; box-shadow:var(--shadow); display:flex; align-items:center; justify-content:space-between; gap:8px}
   .pill .badge{font-size:11px; padding:2px 6px; border-radius:999px; background:#e5e7eb; color:#111}
   body.dark .pill .badge{background:#444; color:#eee}
-  .pill.yonice{border-left-color:var(--blue)}
-  .pill.marine{border-left-color:var(--yellow)}
   .pill.event{border-left-color:var(--green)}
   .absent{background:linear-gradient(180deg, rgba(239,68,68,.12), rgba(239,68,68,.08)); outline:1px dashed rgba(239,68,68,.6);}  
   .day-foot{margin-top:auto; display:flex; flex-direction:column; align-items:center; gap:6px; padding-top:8px}
@@ -114,9 +113,22 @@
   @media (max-width:720px){ .app{flex-direction:column} .tasks{grid-template-columns:1fr} }
   .left.abs-open .week-wrap{height:360px}
   .left.abs-open .month{display:block}
-  .who-badge{display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; width:18px; height:18px; border-radius:999px; margin-left:auto; border:1px solid var(--line)}
-  .who-badge.y{background:rgba(37,99,235,.12); color:#1e3a8a}
-  .who-badge.m{background:rgba(250,204,21,.25); color:#854d0e}
+
+  /* === MODIF : suppression bulles, ajout couleurs Y/M === */
+  .who-badge{display:none}
+
+  .pill.yonice,
+  .card.yonice {
+    background: rgba(37,99,235,.12);
+    border-left-color: var(--blue);
+  }
+  .pill.marine,
+  .card.marine {
+    background: rgba(236,72,153,.12);
+    border-left-color: var(--pink);
+  }
+  /* ====================================================== */
+
   @media print{
     body{background:#fff}
     .panel, .modal, .right-head, #settingsBtn, #statsBtn, #absenceBtn{display:none!important}
@@ -124,6 +136,7 @@
     .week-wrap{height:auto!important; overflow:visible}
   }
 </style>
+
 </head>
 <body>
   <div class="app">
@@ -187,8 +200,8 @@
       <hr>
       <div style="font-weight:600">⚙️ Objectifs</div>
       <div class="row">
-        <div><label>Cible idéale (min)</label><input id="targetInput" type="number" min="10" step="5" value="75"></div>
-        <div><label>Plafond max (min)</label><input id="maxInput" type="number" min="10" step="5" value="90"></div>
+        <div><label>Plafond (min)</label><input id="targetInput" type="number" min="10" step="5" value="75"></div>
+        <div><label>Cible idéale (min)</label><input id="maxInput" type="number" min="10" step="5" value="90"></div>
       </div>
       <div class="row">
         <div><label>Inclure événements Google dans la charge</label>
@@ -386,10 +399,25 @@ function setWhoFilter(f){
  * UI BUILDERS (pills)
  ***************************************************/
 function makePill(text, classes=[], badgeText, who){
-  const d = document.createElement('div'); d.className = 'pill ' + classes.join(' ');
-  const left = document.createElement('span'); left.textContent = text; d.appendChild(left);
-  if(badgeText!==undefined){ const b = document.createElement('span'); b.className='badge'; b.textContent = badgeText; d.appendChild(b); }
-  if(who){ const wb = document.createElement('span'); wb.className = 'who-badge ' + (who==='Yonice'?'y':'m'); wb.textContent = who==='Yonice'?'Y':'M'; d.appendChild(wb); }
+  const d = document.createElement('div'); 
+  d.className = 'pill ' + classes.join(' ');
+
+  // Ajoute couleur selon "who"
+  if (who === 'Yonice') d.classList.add('who-yonice');
+  if (who === 'Marine') d.classList.add('who-marine');
+
+  const left = document.createElement('span'); 
+  left.textContent = text; 
+  d.appendChild(left);
+
+  if (badgeText !== undefined){ 
+    const b = document.createElement('span'); 
+    b.className='badge'; 
+    b.textContent = badgeText; 
+    d.appendChild(b); 
+  }
+
+  // plus de who-badge ici
   return d;
 }
 
@@ -522,128 +550,201 @@ function saveWeekOffset(){ localStorage.setItem('weekOffset', String(weekOffset)
 /***************************************************
  * RENDER SEMAINE — hauteur fixe + jauges + filtre Y/M
  ***************************************************/
+
 function renderWeek(){
-  const weekView = document.getElementById('weekView');
-  weekView.innerHTML = '';
+  const week = document.getElementById('weekView') || document.getElementById('week');
+  if (!week) return;
+  week.innerHTML = '';
 
   const mondayISO_ = mondayOf(weekOffset);
-  const monday = new Date(mondayISO_);
-  const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()+6);
-  const wkNum = getWeekNumber(monday);
-  document.getElementById('weekTitle').textContent = `Semaine ${wkNum}`;
-  document.getElementById('weekSub').textContent = `${frDate(monday)} – ${frDate(sunday)}`;
+  const days = Array.from({length:7}, (_,i)=> addDaysISO(mondayISO_, i));
 
-  const target = Number(document.getElementById('targetInput').value)||75;
-  const maxCap = Number(document.getElementById('maxInput').value)||90;
-  const eventsWeight = document.getElementById('eventsWeight').value; // '0' | 'dur' | '30' | '60'
-  const hideWeekends = (document.getElementById('hideWeekends').value||'no') === 'yes';
+  const target = Number(document.getElementById('targetInput')?.value) || 75;
+  const maxCap = Number(document.getElementById('maxInput')?.value) || 90;
 
-  const evByDate = groupByDate(events, ev => toISODateLocal(ev.start?.date || ev.start?.dateTime));
-  const tasksByDate = groupByDate(tasks.filter(t=>t.nextDue), t => t.nextDue);
+  const whoFilter = document.querySelector('#whoFilter input:checked')?.value || 'all';
 
-  const frag = document.createDocumentFragment();
-  const todayIso = todayISO();
-  for(let i=0;i<7;i++){
-    const dISO = addDaysISO(mondayISO_, i);
-    const wd = new Date(dISO).getDay(); // 0..6 (dim..sam)
-    if(hideWeekends && (wd===0 || wd===6)) continue;
+  const fmtWeekday = new Intl.DateTimeFormat('fr-FR',{ weekday:'long' });
+  const fmtDate    = new Intl.DateTimeFormat('fr-FR',{ day:'2-digit', month:'2-digit' });
 
-    const day = document.createElement('div'); day.className = 'day';
-    if(absences.includes(dISO)) day.classList.add('absent');
-    if(dISO===todayIso) day.classList.add('today');
+  const dayLoad = (dISO) => {
+    return tasks
+      .filter(t => t.nextDue === dISO)
+      .reduce((sum,t)=> sum + (Number(t.duration)||0), 0);
+  };
 
-    const head = document.createElement('div'); head.className = 'day-head';
-    const wdEl = document.createElement('div'); wdEl.className='weekday'; wdEl.textContent = frDay(dISO);
-    const dt = document.createElement('div'); dt.className='date'; dt.textContent = frDate(dISO);
-    head.appendChild(wdEl); head.appendChild(dt); day.appendChild(head);
+  for (const d of days){
+    const col = document.createElement('div');
+    col.className = 'day';
+    col.dataset.date = d;
 
-    let total = 0;
+    // En-tête jour
+    const head = document.createElement('div');
+    head.className = 'day-head';
 
-    (tasksByDate.get(dISO)||[]).forEach(t=>{
-      const lastWho = lastWhoMap.get(t.id) ?? lastWhoMap.get(tasks.indexOf(t));
-      if(whoFilter==='y' && lastWho!=='Yonice') return;
-      if(whoFilter==='m' && lastWho!=='Marine') return;
-      total += Number(t.duration)||0;
-      const p = makePill(t.name, [], `${t.duration||0}m`, lastWho);
-      day.appendChild(p);
-    });
+    const dt = new Date(d + 'T00:00:00');
+    const wk  = document.createElement('div');
+    wk.className = 'weekday';
+    wk.textContent = fmtWeekday.format(dt);
+    head.appendChild(wk);
 
-    (evByDate.get(dISO)||[]).forEach(ev=>{
-      const name = ev.summary || '(Sans titre)';
-      const allDay = !!ev.start?.date && !ev.start?.dateTime;
-      let add = 0;
-      if(eventsWeight==='dur' && ev.start?.dateTime && ev.end?.dateTime){ add = minutesBetween(ev.start.dateTime, ev.end.dateTime); }
-      else if(eventsWeight==='dur' && allDay){ add = 30; }
-      else if(eventsWeight==='30'){ add = 30; }
-      else if(eventsWeight==='60'){ add = 60; }
-      total += add;
-      const p = makePill(name, ['event'], add? `${add}m` : undefined); day.appendChild(p);
-    });
+    const dd = document.createElement('div');
+    dd.className = 'date';
+    dd.textContent = fmtDate.format(dt);
+    head.appendChild(dd);
 
-    const foot = document.createElement('div'); foot.className = 'day-foot';
-    const chip = document.createElement('div'); chip.className='load-chip'; chip.textContent = `${total} / ${target} min`;
-    const bar = document.createElement('div'); bar.className='load-bar';
-    const fill = document.createElement('div'); fill.className='load-fill';
+    if (d === todayISO()) head.classList.add('today-ring');
 
-    const pct = target>0 ? Math.min(100, Math.round(total/target*100)) : 0;
+    col.appendChild(head);
+
+    // Tâches du jour
+    const todays = tasks
+      .map((t, idx) => ({ ...t, _idx: idx }))
+      .filter(t => t.nextDue === d)
+      .filter(t => {
+        const lw = lastWhoMap.get(t.id) ?? lastWhoMap.get(t._idx);
+        if (whoFilter === 'all') return true;
+        if (whoFilter === 'y')   return lw === undefined || lw === 'Yonice';
+        if (whoFilter === 'm')   return lw === undefined || lw === 'Marine';
+        return true;
+      });
+
+    for (const t of todays){
+      const pill = document.createElement('div');
+      pill.className = 'pill';
+      pill.tabIndex = 0;
+
+      // Couleur selon la personne
+      const lw = lastWhoMap.get(t.id) ?? lastWhoMap.get(t._idx);
+      if (lw === 'Yonice') pill.classList.add('yonice');
+      if (lw === 'Marine') pill.classList.add('marine');
+
+      // Nom de la tâche
+      const left = document.createElement('span');
+      left.textContent = t.name;
+      pill.appendChild(left);
+
+      // Petite bulle : seulement la durée
+      const meta = document.createElement('span');
+      meta.className = 'badge';
+      meta.textContent = `${Number(t.duration||0)}m`;
+      pill.appendChild(meta);
+
+      pill.addEventListener('click', () => openModal(t._idx));
+      col.appendChild(pill);
+    }
+
+    // Pied de colonne
+    const load = dayLoad(d);
+
+    const foot = document.createElement('div');
+    foot.className = 'day-foot';
+
+    const chip = document.createElement('div');
+    chip.className = 'load-chip';
+    chip.textContent = `${load} / ${maxCap} min`;
+    foot.appendChild(chip);
+
+    const bar = document.createElement('div');
+    bar.className = 'load-bar';
+
+    const fill = document.createElement('div');
+    fill.className = 'load-fill';
+    const pct = Math.max(0, Math.min(100, (load / Math.max(1, maxCap)) * 100));
     fill.style.width = pct + '%';
+    fill.style.background = pct >= 100 ? 'var(--red)' : 'var(--blue)';
+    bar.appendChild(fill);
 
-    const rs = getComputedStyle(document.documentElement);
-    const color = total <= target ? rs.getPropertyValue('--green').trim() : (total <= maxCap ? rs.getPropertyValue('--orange').trim() : rs.getPropertyValue('--red').trim());
-    fill.style.background = color;
+    const tickTarget = document.createElement('div');
+    tickTarget.className = 'tick';
+    tickTarget.style.left = Math.max(0, Math.min(100, (target / Math.max(1, maxCap)) * 100)) + '%';
+    bar.appendChild(tickTarget);
 
-    const tick = document.createElement('div'); tick.className='tick';
-    const tickPct = target>0 ? Math.min(100, (maxCap/target)*100) : 100; // correction: marque le plafond
-    tick.style.left = tickPct + '%';
-    tick.title = `Plafond: ${maxCap} min`;
+    const tickMax = document.createElement('div');
+    tickMax.className = 'tick';
+    tickMax.style.left = '100%';
+    bar.appendChild(tickMax);
 
-    bar.appendChild(fill); bar.appendChild(tick);
-    foot.appendChild(chip); foot.appendChild(bar);
-    day.appendChild(foot);
+    foot.appendChild(bar);
+    col.appendChild(foot);
 
-    frag.appendChild(day);
+    week.appendChild(col);
   }
-  weekView.appendChild(frag);
 }
+
 
 /***************************************************
  * 9 PROCHAINES TÂCHES — filtre Y/M appliqué
  ***************************************************/
+
 function rebuildUpcoming(){
   const grid = document.getElementById('tasksGrid');
+  if (!grid) return;
   grid.innerHTML = '';
-  const itemsAll = tasks.map((t, idx)=>({ ...t, _idx: idx })).filter(t=>t.nextDue);
 
-  const filtered = itemsAll.filter(t=>{
-    const lw = lastWhoMap.get(t.id) ?? lastWhoMap.get(t._idx);
-    if(whoFilter==='all') return true;
-    if(whoFilter==='y') return lw==='Yonice';
-    if(whoFilter==='m') return lw==='Marine';
-    return true;
-  })
-  .sort((a,b)=> a.nextDue.localeCompare(b.nextDue))
-  .slice(0,9);
+  // Filtre "Qui" (radio), par défaut "all"
+  const whoFilter = document.querySelector('#whoFilter input:checked')?.value || 'all';
+
+  // Source + index d'origine pour compatibilité avec lastWhoMap
+  const itemsAll = tasks
+    .map((t, idx) => ({ ...t, _idx: idx }))
+    .filter(t => t.nextDue); // on ne garde que celles avec une date
+
+  // Ne pas masquer les tâches sans historique
+  const filtered = itemsAll
+    .filter(t => {
+      const lw = lastWhoMap.get(t.id) ?? lastWhoMap.get(t._idx);
+      if (whoFilter === 'all') return true;
+      if (whoFilter === 'y')   return lw === undefined || lw === 'Yonice';
+      if (whoFilter === 'm')   return lw === undefined || lw === 'Marine';
+      return true;
+    })
+    .sort((a,b) => a.nextDue.localeCompare(b.nextDue))
+    .slice(0, 9);
 
   const frag = document.createDocumentFragment();
   const today = new Date(todayISO());
-  filtered.forEach(t=>{
+
+  for (const t of filtered){
+    const d = new Date(t.nextDue);
+    const delta = Math.floor((d - today) / 86400000);
+
     const card = document.createElement('div');
-    const delta = Math.floor((new Date(t.nextDue) - today)/86400000);
-    card.className = 'card ' + (delta<0? 'late':'upcoming');
+    card.className = 'card ' + (delta < 0 ? 'late' : 'upcoming');
+
+    // Couleur selon la dernière personne (remplace les anciennes bulles)
+    const lw = lastWhoMap.get(t.id) ?? lastWhoMap.get(t._idx);
+    if (lw === 'Yonice') card.classList.add('yonice');
+    if (lw === 'Marine') card.classList.add('marine');
+
     card.tabIndex = 0;
 
-    const name = document.createElement('div'); name.className='name';
-    const spanName = document.createElement('span'); spanName.textContent = t.name; name.appendChild(spanName);
-    const lw = lastWhoMap.get(t.id) ?? lastWhoMap.get(t._idx);
-    if(lw){ const wb=document.createElement('span'); wb.className='who-badge '+(lw==='Yonice'?'y':'m'); wb.textContent = lw==='Yonice'?'Y':'M'; name.appendChild(wb); }
-    const meta = document.createElement('div'); meta.className='meta'; meta.textContent = `durée ${t.duration}m · tous ${t.freq} j`;
-    const days = document.createElement('div'); days.className='days';
-    days.textContent = delta<0? `${Math.abs(delta)} j de retard` : (delta===0? "aujourd'hui" : `J-${delta}`);
+    // Nom
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = t.name;
+    card.appendChild(name);
 
-    card.appendChild(name); card.appendChild(meta); card.appendChild(days);
-    card.addEventListener('click', ()=> openModal(t._idx));
+    // Métadonnées
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = `${t.nextDue} · ${t.duration} min · tous ${t.freq} j`;
+    card.appendChild(meta);
+
+    // Indicateur J-?
+    const days = document.createElement('div');
+    days.className = 'days';
+    days.textContent = (delta < 0)
+      ? `${Math.abs(delta)} j de retard`
+      : (delta === 0 ? "aujourd'hui" : `J-${delta}`);
+    card.appendChild(days);
+
+    // Clic → modal (édition/validation)
+    card.addEventListener('click', () => openModal(t._idx));
+
     frag.appendChild(card);
-  });
+  }
+
   grid.appendChild(frag);
 }
 
@@ -769,43 +870,128 @@ function renderStats(){
  * DISTRIBUTION — heuristique corrigée (SUPPRIME le doublon)
  ***************************************************/
 function distributeWeek(){
-  const target = Number(document.getElementById('targetInput').value)||75;
-  const maxCap = Number(document.getElementById('maxInput').value)||90;
+  const target = Number(document.getElementById('targetInput').value) || 75;
+  const maxCap = Number(document.getElementById('maxInput').value) || 90;
+  const hideWeekendsPref = (document.getElementById('hideWeekends').value || 'no') === 'yes';
+
   const mondayISO_ = mondayOf(weekOffset);
-  const hideWeekendsPref = (document.getElementById('hideWeekends').value||'no')==='yes';
+  const weekDays = Array.from({length: 7}, (_, i) => addDaysISO(mondayISO_, i));
+  const availableDays = weekDays.filter(d => !hideWeekendsPref || !isWeekend(d));
 
-  const weekDays = Array.from({length:7}, (_,i)=> addDaysISO(mondayISO_, i));
-  const available = weekDays.filter(d => !absences.includes(d) && (!hideWeekendsPref || !isWeekend(d)));
+  // Helpers
+  const isAbsence = (d) => Array.isArray(absences) && absences.includes(d);
 
-  const load = new Map(available.map(d=>[d,0]));
-  const inWeek = tasks.filter(t=> weekDays.includes(t.nextDue));
-  for(const t of inWeek){ if(available.includes(t.nextDue)){ load.set(t.nextDue, (load.get(t.nextDue)||0) + (Number(t.duration)||0)); } }
+  // Dernier jour de la séquence d'absence contenant d
+  const endOfAbsence = (d) => {
+    let cur = d;
+    while (isAbsence(cur)) cur = addDaysISO(cur, 1);
+    return addDaysISO(cur, -1);
+  };
 
-  const sorted = [...inWeek].sort((a,b)=>(Number(b.duration)||0)-(Number(a.duration)||0));
+  // Premier jour ouvré après une date (saute absences et week-ends si masqués)
+  const nextWorkingDayAfter = (d) => {
+    let cur = addDaysISO(d, 1);
+    while (isAbsence(cur)) cur = addDaysISO(cur, 1);
+    while (hideWeekendsPref && isWeekend(cur)) cur = addDaysISO(cur, 1);
+    return cur;
+  };
 
-  for(const t of sorted){
-    const dur = Number(t.duration)||0;
-    const cur = t.nextDue;
-    const curLoad = available.includes(cur) ? (load.get(cur)||0) : Infinity;
-    const overloaded = curLoad > maxCap;
-    const mustMove = !available.includes(cur) || overloaded;
-    if(!mustMove) continue;
+  // Charges initiales pour la semaine affichée
+  const load = new Map(availableDays.map(d => [d, 0]));
+  const inWeek = tasks.filter(t => weekDays.includes(t.nextDue));
 
-    let bestDay = null, bestScore = Infinity;
-    for(const d of available){
-      const l = load.get(d)||0;
-      if(l + dur > maxCap) continue;
-      const dist = Math.abs(weekDays.indexOf(d) - weekDays.indexOf(cur));
-      const penalty = (l < target ? 0 : (l - target + 1));
-      const score = dist * 100 + penalty;
-      if(score < bestScore){ bestScore = score; bestDay = d; }
+  for (const t of inWeek) {
+    const d = t.nextDue;
+    if (availableDays.includes(d) && !isAbsence(d)) {
+      load.set(d, (load.get(d) || 0) + (Number(t.duration) || 0));
     }
-    if(!bestDay){ bestDay = available.reduce((minD,d)=> (load.get(d)||0) < (load.get(minD)||0) ? d : minD, available[0]); }
-
-    if(available.includes(cur)) load.set(cur, Math.max(0,(load.get(cur)||0) - dur));
-    load.set(bestDay, (load.get(bestDay)||0) + dur);
-    t.nextDue = bestDay;
   }
+
+  // Traiter d'abord les plus longues
+  const sorted = [...inWeek].sort((a, b) => (Number(b.duration) || 0) - (Number(a.duration) || 0));
+
+  for (const t of sorted) {
+    const dur = Number(t.duration) || 0;
+    const original = t.nextDue;
+    const curDay = original;
+
+    // 1) Si la tâche tombe pendant une absence, base = premier jour ouvré après la PLAGE d'absence
+    let base = original;
+    if (isAbsence(original)) {
+      const endAbs = endOfAbsence(original);
+      base = nextWorkingDayAfter(endAbs);
+    }
+
+    // 2) Correctif "dimanche" / hors semaine: si base n'est pas dans la semaine affichée,
+    // on pose directement sur base (semaine suivante typiquement) et on passe à la suivante.
+    const baseIdx = weekDays.indexOf(base);
+    if (baseIdx === -1) {
+      if (availableDays.includes(curDay) && !isAbsence(curDay)) {
+        load.set(curDay, Math.max(0, (load.get(curDay) || 0) - dur));
+      }
+      t.nextDue = base;
+      continue;
+    }
+
+    // 2bis) Si PAS d'absence, que le jour courant est dispo, et que sa charge (déjà incluant la tâche)
+    // ne dépasse pas maxCap, on ne touche à rien (évite les déplacements "sans raison").
+    if (!isAbsence(original) && availableDays.includes(curDay)) {
+      const lcur = load.get(curDay) || 0;
+      if (lcur <= maxCap) {
+        // rien à faire, on garde la tâche en place
+        continue;
+      }
+    }
+
+    // 3) Recherche strictement APRÈS base (jamais avant)
+    const forwardDays = availableDays.filter(d => weekDays.indexOf(d) >= baseIdx);
+    const candidates = forwardDays.length ? forwardDays : [];
+
+    // Fonctions de test de capacité et de charge effective (sans double comptage sur le jour courant)
+    const canFit = (d) => {
+      const l = load.get(d) || 0;
+      if (d === curDay) return l <= maxCap && !isAbsence(d);
+      return (l + dur) <= maxCap && !isAbsence(d);
+    };
+    const effectiveLoadIfPlaced = (d) => {
+      const l = load.get(d) || 0;
+      return d === curDay ? l : l + dur;
+    };
+
+    // 4) Choix du jour
+    let chosen = null;
+
+    // 4a) Essayer de respecter maxCap si possible
+    for (const d of candidates) {
+      if (canFit(d)) { chosen = d; break; }
+    }
+
+    // 4b) Sinon, choisir APRÈS le moins chargé après placement, quitte à dépasser maxCap
+    if (!chosen && candidates.length) {
+      chosen = candidates.reduce((best, d) => {
+        const lb = effectiveLoadIfPlaced(best);
+        const ld = effectiveLoadIfPlaced(d);
+        if (ld < lb) return d;
+        if (ld === lb) {
+          // tie-breaker: plus proche de base
+          const di = weekDays.indexOf(d);
+          const bi = weekDays.indexOf(best);
+          return Math.abs(di - baseIdx) < Math.abs(bi - baseIdx) ? d : best;
+        }
+        return best;
+      }, candidates[0]);
+    }
+
+    // 5) Appliquer le déplacement si choisi et différent
+    if (chosen && chosen !== t.nextDue) {
+      if (availableDays.includes(curDay) && !isAbsence(curDay)) {
+        load.set(curDay, Math.max(0, (load.get(curDay) || 0) - dur));
+      }
+      load.set(chosen, (load.get(chosen) || 0) + (chosen === curDay ? 0 : dur));
+      t.nextDue = chosen;
+    }
+  }
+
   saveAll();
 }
 </script>
@@ -821,56 +1007,240 @@ function distributeWeek(){
  * CRUD SELECTEURS — remplissage des listes
  ***************************************************/
 function refreshSelectors(){
-  const editSel = document.getElementById('editSel');
-  const delSel = document.getElementById('delSel');
-  if(!editSel || !delSel) return;
-  editSel.innerHTML = ''; delSel.innerHTML = '';
-  tasks.forEach((t,i)=>{
-    const o1 = document.createElement('option'); o1.value = i; o1.textContent = t.name; editSel.appendChild(o1);
-    const o2 = document.createElement('option'); o2.value = i; o2.textContent = t.name; delSel.appendChild(o2);
-  });
+  // Références DOM
+  const addBtn   = document.getElementById('addBtn');
+  const addName  = document.getElementById('addName');
+  const addDur   = document.getElementById('addDur');
+  const addFreq  = document.getElementById('addFreq');
 
-  // Bind CRUD boutons (une seule fois)
-  if(!refreshSelectors._bound){
-    refreshSelectors._bound = true;
-    document.getElementById('addBtn').addEventListener('click', ()=>{
-      const name = (document.getElementById('addName').value||'').trim();
-      const dur = Number(document.getElementById('addDur').value)||0;
-      const freq = Number(document.getElementById('addFreq').value)||7;
-      if(!name){ alert('Nom requis'); return; }
-      tasks.push({ id: uid(), name, duration: dur, freq, nextDue: todayISO() });
-      saveAll(); refreshSelectors(); renderAll();
-      document.getElementById('addName').value='';
+  const targetInput = document.getElementById('targetInput');
+  const maxInput    = document.getElementById('maxInput');
+  const hideWE      = document.getElementById('hideWeekends');
+
+  // Édition / suppression
+  const editSel  = document.getElementById('editSel');
+  const editName = document.getElementById('editName');
+  const editDur  = document.getElementById('editDur');
+  const editFreq = document.getElementById('editFreq');
+  const editDue  = document.getElementById('editDue');   // champ date
+  const saveEdit = document.getElementById('saveEdit');
+
+  const delSel   = document.getElementById('delSel');
+  const delBtn   = document.getElementById('delBtn');
+
+  // Raccourcis utilitaires
+  const hideWeekendsPref = () => (document.getElementById('hideWeekends')?.value || 'no') === 'yes';
+  const isAbsent = d => Array.isArray(absences) && absences.includes(d);
+
+  // Helpers d’alignement de date
+  function endOfAbsence(d){
+    // renvoie le dernier jour de la plage d'absence qui contient d, ou d si non absent
+    if (!isAbsent(d)) return d;
+    let cur = d;
+    while (isAbsent(cur)) cur = addDaysISO(cur, 1);
+    return addDaysISO(cur, -1);
+  }
+  function nextWorkingDayAfter(d){
+    // saute les absences et, si demandé, les week-ends
+    let cur = addDaysISO(d, 1);
+    while (isAbsent(cur)) cur = addDaysISO(cur, 1);
+    if (hideWeekendsPref()){
+      while (isWeekend(cur)) cur = addDaysISO(cur, 1);
+    }
+    return cur;
+  }
+  function normalizeDueDate(dateISO){
+    let out = dateISO;
+
+    // 1) si on tombe dans une absence, on pousse après la fin de la plage
+    if (isAbsent(out)){
+      const endAbs = endOfAbsence(out);
+      out = nextWorkingDayAfter(endAbs);
+    }
+
+    // 2) si les week-ends sont masqués et que la date est un week-end, on pousse au lundi
+    if (hideWeekendsPref() && isWeekend(out)){
+      // aller au lundi suivant
+      let cur = out;
+      while (isWeekend(cur)) cur = addDaysISO(cur, 1);
+      out = cur;
+    }
+
+    return out;
+  }
+
+  // Réglages (sauvegarde + rerender)
+  if (targetInput && !targetInput._bound){
+    targetInput._bound = true;
+    targetInput.onchange = () => { saveAll(); renderAll(); };
+  }
+  if (maxInput && !maxInput._bound){
+    maxInput._bound = true;
+    maxInput.onchange = () => { saveAll(); renderAll(); };
+  }
+  if (hideWE && !hideWE._bound){
+    hideWE._bound = true;
+    hideWE.onchange = () => { saveAll(); renderAll(); };
+  }
+
+  // Filtre "Qui" (Y / M / All)
+  const whoFilterWrap = document.getElementById('whoFilter');
+  if (whoFilterWrap && !whoFilterWrap._bound){
+    whoFilterWrap._bound = true;
+    whoFilterWrap.querySelectorAll('input[type="radio"]').forEach(r=>{
+      r.onchange = () => { renderAll(); };
     });
+  }
 
-    document.getElementById('editSel').addEventListener('change', ()=>{
-      const i = Number(document.getElementById('editSel').value)||0;
-      const t = tasks[i]; if(!t) return;
-      document.getElementById('editName').value = t.name;
-      document.getElementById('editDur').value = t.duration;
-      document.getElementById('editFreq').value = t.freq;
+  // Helper: choisir une date dans la semaine affichée (week-end autorisé)
+  function pickDayInViewAllowWeekend(){
+    const monday = mondayOf(weekOffset);
+    const weekDays = Array.from({length:7}, (_,i)=> addDaysISO(monday, i));
+    const today = todayISO();
+
+    // prendre aujourd’hui s’il est dans la vue
+    if (weekDays.includes(today)) return normalizeDueDate(today);
+
+    // sinon, premier jour de la vue normalisé
+    return normalizeDueDate(weekDays[0]);
+  }
+
+  // -------- Ajouter une tâche
+  if (addBtn && !addBtn._bound){
+    addBtn._bound = true;
+    addBtn.addEventListener('click', ()=>{
+      const name = (addName?.value || '').trim();
+      let dur  = addDur  ? Number(addDur.value)  : NaN;
+      let freq = addFreq ? Number(addFreq.value) : NaN;
+
+      if (!name){ alert('Nom requis'); return; }
+      if (!Number.isFinite(dur)  || dur <= 0)  dur  = 30;
+      if (!Number.isFinite(freq) || freq <= 0) freq = 7;
+
+      // place la date initiale dans la semaine affichée puis normalise (absences / WE masqués)
+      const initialDue = pickDayInViewAllowWeekend();
+
+      tasks.push({
+        id: uid(),
+        name,
+        duration: dur,
+        freq,
+        nextDue: initialDue
+      });
+
+      saveAll();
+      rebuildTaskSelectors();
+      renderAll();
+
+      if (addName) addName.value = '';
+      if (addDur)  addDur.value  = String(dur);
+      if (addFreq) addFreq.value = String(freq);
     });
+  }
 
-    document.getElementById('saveEdit').addEventListener('click', ()=>{
-      const i = Number(document.getElementById('editSel').value)||0;
-      const t = tasks[i]; if(!t) return;
-      t.name = (document.getElementById('editName').value||t.name).trim();
-      t.duration = Number(document.getElementById('editDur').value)||t.duration;
-      t.freq = Number(document.getElementById('editFreq').value)||t.freq;
-      saveAll(); refreshSelectors(); renderAll();
+  // -------- Remplir listes édition/suppression
+  rebuildTaskSelectors();
+
+  // -------- Changement d’élément à éditer → hydrate les champs (incluant editDue)
+  if (editSel && !editSel._bound){
+    editSel._bound = true;
+    editSel.addEventListener('change', ()=>{
+      const idx = Number(editSel.value);
+      const t = tasks[idx];
+      if (!t) return;
+      if (editName) editName.value = t.name || '';
+      if (editDur)  editDur.value  = Number(t.duration||0);
+      if (editFreq) editFreq.value = Number(t.freq||7);
+      if (editDue)  editDue.value  = /^\d{4}-\d{2}-\d{2}$/.test(t.nextDue) ? t.nextDue : '';
     });
+  }
 
-    document.getElementById('delBtn').addEventListener('click', ()=>{
-      const i = Number(document.getElementById('delSel').value)||0;
-      const t = tasks[i]; if(!t) return;
-      if(confirm(`Supprimer la tâche « ${t.name} » ?`)){
-        tasks.splice(i,1);
-        saveAll(); refreshSelectors(); renderAll();
+  // -------- Enregistrer modification (incluant nextDue normalisé)
+  if (saveEdit && !saveEdit._bound){
+    saveEdit._bound = true;
+    saveEdit.addEventListener('click', ()=>{
+      const idx = Number(editSel?.value);
+      const t = tasks[idx];
+      if (!t){ alert('Choisis une tâche à modifier'); return; }
+
+      const newName = (editName?.value || '').trim();
+      let newDur  = editDur  ? Number(editDur.value)  : NaN;
+      let newFreq = editFreq ? Number(editFreq.value) : NaN;
+      let newDue  = editDue  ? (editDue.value || '').trim() : '';
+
+      if (!newName){ alert('Nom requis'); return; }
+      if (!Number.isFinite(newDur)  || newDur <= 0)  newDur  = 30;
+      if (!Number.isFinite(newFreq) || newFreq <= 0) newFreq = 7;
+
+      // Validation minimale de la date
+      if (newDue){
+        const isoRe = /^\d{4}-\d{2}-\d{2}$/;
+        if (!isoRe.test(newDue)){
+          alert('Format de date invalide (attendu: AAAA-MM-JJ)');
+          return;
+        }
+        // Normalisation selon absences / week-ends masqués
+        newDue = normalizeDueDate(newDue);
+      } else {
+        newDue = t.nextDue; // si vide, on conserve l’ancienne
       }
+
+      t.name = newName;
+      t.duration = newDur;
+      t.freq = newFreq;
+      t.nextDue = newDue;
+
+      saveAll();
+      rebuildTaskSelectors(idx);
+      renderAll();
+    });
+  }
+
+  // -------- Supprimer une tâche
+  if (delBtn && !delBtn._bound){
+    delBtn._bound = true;
+    delBtn.addEventListener('click', ()=>{
+      const idx = Number(delSel?.value);
+      const t = tasks[idx];
+      if (!t){ alert('Choisis une tâche à supprimer'); return; }
+      if (!confirm(`Supprimer "${t.name}" ?`)) return;
+
+      tasks.splice(idx, 1);
+      saveAll();
+      rebuildTaskSelectors();
+      renderAll();
     });
   }
 }
 
+// Remplit editSel / delSel et conserve la sélection si possible
+function rebuildTaskSelectors(preserveIndex){
+  const editSel  = document.getElementById('editSel');
+  const delSel   = document.getElementById('delSel');
+
+  const options = tasks.map((t, i)=> {
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(t.nextDue) ? t.nextDue : '';
+    return { value: String(i), label: `${t.name} — ${t.duration||0}m · ${t.freq||7}j${d ? ' · '+d : ''}` };
+  });
+
+  function fillSelect(sel){
+    if (!sel) return;
+    const prev = preserveIndex != null ? String(preserveIndex) : sel.value;
+    sel.innerHTML = '';
+    for (const opt of options){
+      const o = document.createElement('option');
+      o.value = opt.value; o.textContent = opt.label;
+      sel.appendChild(o);
+    }
+    if (options.length){
+      sel.value = (prev && options.some(o=>o.value===prev)) ? prev : '0';
+    }
+    sel.dispatchEvent(new Event('change'));
+  }
+
+  fillSelect(editSel);
+  fillSelect(delSel);
+}
 /***************************************************
  * EXPORT / IMPORT / CLEAR (robuste)
  ***************************************************/
@@ -924,6 +1294,22 @@ function clearAll(){
   }
 }
 
+
+function pickDayInViewAllowWeekend(){
+  const monday = mondayOf(weekOffset);
+  const weekDays = Array.from({length:7}, (_,i)=> addDaysISO(monday, i));
+  const isAbsent = d => Array.isArray(absences) && absences.includes(d);
+
+  const today = todayISO();
+  if (weekDays.includes(today) && !isAbsent(today)) return today;
+
+  for (const d of weekDays){
+    if (!isAbsent(d)) return d;
+  }
+  // tout est "absent" ? tant pis, on met le lundi de la vue
+  return weekDays[0];
+}
+
 /***************************************************
  * ÉVENEMENTS SUPPLÉMENTAIRES (clavier)
  ***************************************************/
@@ -939,6 +1325,10 @@ function clearAll(){
     else if(e.key==='ArrowRight'){ weekOffset++; saveWeekOffset(); renderWeek(); }
   });
 })();
+
+
+refreshSelectors();
+
 </script>
 <!-- ===== FIN PARTIE 3/3 -->
 </body>
